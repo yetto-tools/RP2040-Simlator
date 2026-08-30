@@ -314,15 +314,19 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Dependencies**: P1.3
 - **Design**: RP2040 datasheet 2.3.1, 2.19
 
-#### P3.2: GPIO Interrupts
-- [ ] Edge detection (low, high, rising, falling)
-- [ ] Per-pin interrupt enable
-- [ ] Status register
-- [ ] NVIC integration
-- **Tests**: 15+ edge detection tests
+#### P3.2: GPIO Interrupts  [DONE]
+- [x] Per-pin LEVEL_LOW / LEVEL_HIGH / EDGE_LOW / EDGE_HIGH detect in
+      `IoBank0::poll()` (called once per `Simulator::step()`); level bits
+      track live, edge bits latch until written-1-to-clear via INTR0..3
+- [x] Independent PROC0_* and PROC1_* INTE / INTF / INTS register sets
+- [x] NVIC integration: PROC0 status -> IO_IRQ_BANK0 (IRQ13) on core 0,
+      PROC1 status -> IRQ13 on core 1
+- **Tests**: `tests/unit/test_iobank0.cpp` (3 cases: level/edge tracking +
+      w1c, per-core routing, INTF force)
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P3.1, P1.4
+- **Files**: `src/peripherals/iobank0.{h,cpp}`
 
 #### P3.3a: System TIMER (0x40054000)  [DONE]
 - [x] 64-bit microsecond counter; TIMEHW/LW write pair, TIMEHR/LR read pair
@@ -905,7 +909,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P3.1.1: GPIO controller (28 pins)
 - [ ] P3.1.2: Pull-up/pull-down
 - [ ] P3.1.3: Glitch filter
-- [ ] P3.2.1: Edge detection
+- [x] P3.2.1: Edge detection (IoBank0::poll)
 - [ ] P3.3.1: Timer/PWM controller
 - [ ] P3.3.2: PWM mode
 - [ ] P3.4.1: Timer interrupts

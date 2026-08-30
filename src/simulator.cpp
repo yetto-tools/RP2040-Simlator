@@ -51,6 +51,8 @@ Simulator::Simulator() {
     cpu_.set_sev_target(&cpu1_);
     cpu1_.set_sev_target(&cpu_);
 
+    iobank_.connect_cores(&cpu_, &cpu1_);
+
     // Every peripheral IRQ is wired to both cores; each core's NVIC decides.
     scs_.connect_core1(&cpu1_);
     timer_.connect_core1(&cpu1_);
@@ -135,6 +137,7 @@ ExecStatus Simulator::step() {
     rtc_.on_cycles(spent);
     pio0_regs_.poll_interrupts();
     pio1_regs_.poll_interrupts();
+    iobank_.poll();
     return status;
 }
 
