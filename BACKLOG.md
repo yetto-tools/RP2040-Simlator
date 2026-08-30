@@ -306,7 +306,18 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `src/peripherals/timer.{h,cpp}`
 - **Design**: RP2040 datasheet 4.6
 
-#### P3.3: PWM Controller (0x40050000)
+#### P3.3: PWM Controller (0x40050000)  [IN PROGRESS]
+- [x] `Pwm` BusPeripheral (`src/peripherals/pwm.{h,cpp}`), 8 slices x 2 channels
+- [x] Per-slice CSR/DIV/CTR/CC/TOP; global EN, INTR/INTE/INTF/INTS
+- [x] Free-running fractional divider, count-up + PH_CORRECT up/down, TOP wrap
+- [x] CC compare -> GPIO level (slice N ch A/B -> GPIO 2N / 2N+1 [+16]),
+      A_INV / B_INV; new `Gpio::kPwm` driver + FUNCSEL 4
+- [x] Wrap interrupt -> PWM_IRQ_WRAP (IRQ4); wired into Simulator on_cycles()
+- [ ] B-pin gated/edge DIVMODEs, phase advance/retard, DMA
+- **Tests**: `tests/unit/test_pwm.cpp` (6 cases)
+- **Design**: RP2040 datasheet 4.5
+
+#### P3.3-OLD: PWM Controller (original checklist)
 - [ ] 4 timer slices
 - [ ] 2 channels per slice (A, B)
 - [ ] 16-bit counter

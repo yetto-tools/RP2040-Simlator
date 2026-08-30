@@ -59,6 +59,7 @@ add_library(rp2040_core STATIC
     src/peripherals/uart.cpp
     src/peripherals/adc.cpp
     src/peripherals/dma.cpp
+    src/peripherals/pwm.cpp
     src/peripherals/spi.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)

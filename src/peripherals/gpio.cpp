@@ -16,6 +16,7 @@ int Gpio::driver_index(unsigned pin) const {
         case kFuncSio:  return kSio;
         case kFuncPio0: return kPio0;
         case kFuncPio1: return kPio1;
+        case kFuncPwm:  return kPwm;
         default:        return -1;
     }
 }

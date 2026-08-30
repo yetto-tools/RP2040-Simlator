@@ -13,6 +13,7 @@ Simulator::Simulator() {
     uart1_.attach(mem_);
     spi0_.attach(mem_);
     spi1_.attach(mem_);
+    pwm_.attach(mem_);
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
     pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);
@@ -45,6 +46,7 @@ ExecStatus Simulator::step() {
     }
     timer_.on_cycles(spent);
     adc_.on_cycles(spent);
+    pwm_.on_cycles(spent);
     pio0_regs_.poll_interrupts();
     pio1_regs_.poll_interrupts();
     return status;
