@@ -51,6 +51,7 @@ add_library(rp2040_core STATIC
     src/loaders/elf_loader.cpp
     src/loaders/uf2_loader.cpp
     src/pio/pio_decode.cpp
+    src/pio/pio_assembler.cpp
     src/pio/state_machine.cpp
     src/pio/pio_block.cpp
     src/pio/pio_registers.cpp

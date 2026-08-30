@@ -579,18 +579,25 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Dependencies**: P1.3
 - **Files**: `src/loaders/uf2_loader.{h,cpp}`, `src/simulator.cpp`
 
-#### P7.3: PIO Assembler
-- [ ] Support pioasm syntax
-- [ ] Label resolution
-- [ ] Expression evaluation
-- [ ] Instruction encoding
-- [ ] .sideset directives
-- [ ] .define constants
-- [ ] Error reporting
-- **Tests**: 20+ assembly programs
+#### P7.3: PIO Assembler  [DONE - core language]
+- [x] pioasm syntax: 9 instructions + `nop`, `.program`, `.define [PUBLIC]`,
+      `.origin`, `.side_set N [opt] [pindirs]`, `.wrap_target` / `.wrap`,
+      labels (`name:` / `PUBLIC name:`), `; // /* */` comments
+- [x] Label resolution (forward + backward) via a two-pass assembler
+- [x] Expression evaluation (+ - * , unary - ~ ::, parens, hex/bin/dec,
+      symbols); defines and labels share one symbol table
+- [x] Instruction encoding cross-checked by round-tripping through pio_decode
+- [x] Side-set / delay field packing incl. the optional enable bit and the
+      per-width delay-range check
+- [x] Error reporting with `line N:` prefixes
+- [ ] Code-gen back-ends (C/Python/Ada headers) - not needed by the sim
+- **Tests**: `tests/unit/test_pio_assembler.cpp` (squarewave, ws2812-style
+      side-set, labels, defines/expressions, every mov/irq/push/pull form,
+      comment styles, 6 diagnostic subcases)
 - **Effort**: 25 hours
 - **Priority**: HIGH
 - **Dependencies**: P2.1, P2.2, P2.3
+- **Files**: `src/pio/pio_assembler.{h,cpp}`
 
 #### P7.4: GDB Stub (Remote Serial Protocol)  [IN PROGRESS]
 - [x] `GdbStub` (`src/debuggers/gdb_stub.{h,cpp}`): pure `handle_packet()`
@@ -949,8 +956,8 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P7.1.2: ELF loader (loading into memory)
 - [ ] P7.1.3: Symbol table extraction
 - [x] P7.2.1: UF2 loader
-- [ ] P7.3.1: PIO assembler (pioasm syntax)
-- [ ] P7.3.2: Label resolution
+- [x] P7.3.1: PIO assembler (pioasm syntax)
+- [x] P7.3.2: Label resolution
 - [ ] P7.4.1: GDB stub TCP server
 - [ ] P7.4.2: Register read/write (RSP)
 - [ ] P7.4.3: Memory access (RSP)
