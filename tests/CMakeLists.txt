@@ -54,6 +54,7 @@ rp2040_add_test(test_gdb_stub unit/test_gdb_stub.cpp)
 # cases as skipped.
 # ---------------------------------------------------------------------------
 rp2040_add_test(test_firmware integration/test_firmware.cpp)
+rp2040_add_test(test_pio_program integration/test_pio_program.cpp)
 
 find_program(ARM_NONE_EABI_GCC arm-none-eabi-gcc)
 if(ARM_NONE_EABI_GCC)
