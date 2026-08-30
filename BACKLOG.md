@@ -633,17 +633,20 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3
 
-#### P7.5: PIO Debugger
-- [ ] Per-SM breakpoints
-- [ ] PC control per SM
-- [ ] Register inspection (X, Y, OSR, ISR)
-- [ ] FIFO state inspection
-- [ ] Instruction trace
-- [ ] Cycle counting
-- **Tests**: 15+ PIO debugging scenarios
+#### P7.5: PIO Debugger  [DONE]
+- [x] Per-SM breakpoints keyed by (block, sm, program address); run-until-break
+- [x] Single-clock stepping over both blocks (`PioDebugger::step` / `run`)
+- [x] Register inspection: PC, X, Y, OSR, ISR + shift counts, enabled, stall
+- [x] FIFO state inspection (TX/RX levels)
+- [x] Instruction trace (cycle, block, sm, pc, encoded word) + disassembly
+- [x] Per-SM retired-instruction counts (`PioBlock::instructions_retired`)
+- [x] PIO disassembler (`src/pio/pio_disasm.{h,cpp}`), verified as the inverse
+      of the assembler by a round-trip test
+- **Tests**: `tests/unit/test_pio_debugger.cpp`, `tests/unit/test_pio_disasm.cpp`
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P2.1, P7.4
+- **Files**: `src/debuggers/pio_debugger.{h,cpp}`, `src/pio/pio_disasm.{h,cpp}`
 
 #### P7.6: Profiler & Performance Analysis
 - [ ] Cycle counter
@@ -974,7 +977,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P7.4.3: Memory access (RSP)
 - [ ] P7.4.4: Execution control (continue, step)
 - [ ] P7.4.5: Breakpoint management
-- [ ] P7.5.1: PIO debugger (per-SM inspection)
+- [x] P7.5.1: PIO debugger (per-SM inspection)
 - [ ] P7.6.1: Profiler
 
 **Definition of Done**:

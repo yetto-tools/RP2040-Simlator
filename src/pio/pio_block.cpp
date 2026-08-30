@@ -30,13 +30,15 @@ void PioBlock::set_clkdiv(unsigned sm, std::uint16_t int_part, std::uint8_t frac
 
 void PioBlock::tick() {
     for (unsigned i = 0; i < kNumSm; ++i) {
+        last_outcome_[i] = {};
         if (!sm_[i].enabled()) continue;
         // Accumulate 256 units per system clock; step the SM each time the
         // accumulator covers one full divider period.
         clkacc_[i] += 256u;
         if (clkacc_[i] >= clkdiv_[i]) {
             clkacc_[i] -= clkdiv_[i];
-            sm_[i].tick();
+            last_outcome_[i] = sm_[i].tick();
+            if (last_outcome_[i].executed) ++instr_retired_[i];
         }
     }
 }

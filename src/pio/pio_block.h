@@ -48,6 +48,15 @@ public:
     // ticks this cycle executes one instruction.
     void tick();
 
+    // Debug/inspection: the last per-SM tick outcome and the running count of
+    // instructions each SM has retired.
+    StateMachine::TickOutcome last_outcome(unsigned sm) const {
+        return sm < kNumSm ? last_outcome_[sm] : StateMachine::TickOutcome{};
+    }
+    std::uint64_t instructions_retired(unsigned sm) const {
+        return sm < kNumSm ? instr_retired_[sm] : 0u;
+    }
+
 private:
     Gpio& gpio_;
     int index_;
@@ -56,6 +65,8 @@ private:
     std::uint8_t irq_ = 0;
     std::array<std::uint32_t, kNumSm> clkdiv_{};   // int*256 + frac
     std::array<std::uint32_t, kNumSm> clkacc_{};
+    std::array<StateMachine::TickOutcome, kNumSm> last_outcome_{};
+    std::array<std::uint64_t, kNumSm> instr_retired_{};
 };
 
 }  // namespace rp2040
