@@ -171,33 +171,34 @@ BLX    - Branch, link, and exchange
 Bcc    - Conditional branch
 ```
 
-#### Conditional Instructions (via IT)
+#### Conditional Execution
+
+ARMv6-M has **no IT block** (that is ARMv7-M / Cortex-M3+). Conditional
+execution on the M0+ is limited to `Bcc` (conditional branch). The
+simulator's decoder rejects `IT`/`ITT`/`ITE`/... encodings as UNDEFINED,
+along with the other ARMv7-M-only encodings (`CBZ`/`CBNZ`, `LDRD`/`STRD`,
+`.W` LDM/STM, `UMULL`/`SMULL`, `MOVW`/`MOVT`).
+
+#### Special / System Instructions
 ```
-IT       - If-Then (up to 4 instructions)
-ITT      - If-Then-Then
-ITE      - If-Then-Else
-ITTE     - If-Then-Then-Else
-etc.
+NOP      - No operation           WFI  - Wait for interrupt (sleep)
+CPS      - Change processor state WFE  - Wait for event (sleep)
+CPSID/IE - Disable/enable IRQs    SEV  - Send event (to both cores)
+MRS/MSR  - Move from/to PSR       YIELD- Hint (no-op here)
+BKPT     - Breakpoint             DSB/DMB/ISB - Barriers (32-bit)
+SVC      - Supervisor call        BL   - Branch-link (32-bit)
 ```
 
-#### Special Instructions (8 types)
-```
-NOP      - No operation
-CPS      - Change processor state
-CPSID    - Disable interrupts
-CPSIE    - Enable interrupts
-MRS      - Move from PSR
-MSR      - Move to PSR
-BKPT     - Breakpoint
-SVC      - Supervisor call
-```
+The six 32-bit encodings (`BL`, `MRS`, `MSR`, `DSB`, `DMB`, `ISB`) are the
+*only* Thumb-2 slice ARMv6-M implements.
 
-#### Data Processing (10 types)
-```
-MOV, MOVS - Move
-MVNS      - Move NOT
-MOV (shift) - Move with shift
-```
+#### Data Processing (flag-setting forms)
+
+Because there is no IT block, the 16-bit data-processing instructions are
+the **flag-setting** forms: `MOVS`, `ADDS`, `SUBS`, `ANDS`, `ORRS`, `EORS`,
+`LSLS`, `LSRS`, `ASRS`, `RORS`, `MULS`, `MVNS`, `BICS`, `ADCS`, `SBCS`,
+`RSBS`, plus the always-flag-setting `CMP`/`CMN`/`TST`. The non-flag forms
+that exist are the high-register `MOV`/`ADD`/`CMP`, `ADR`, and `ADD`/`SUB SP`.
 
 ### 1.5 Condition Codes
 
@@ -856,24 +857,45 @@ struct NVIC {
 
 ### 5.2 Exception Entry
 
-When exception fires:
-1. Save context (8 words on stack)
-2. Look up vector table entry
-3. Jump to ISR address
-4. Set exception number in xPSR
+When an exception is taken (`Cpu::take_exception`):
+1. Stack the 8-word frame, forcing 8-byte alignment and recording the
+   realignment in stacked xPSR[9].
+2. Write `EXC_RETURN` (0xFFFFFFF1 / F9 / FD) into LR.
+3. Set IPSR = exception number (-> Handler mode).
+4. Fetch the handler address from `VTOR + 4*exc` and branch.
 
-**Stack frame** (8 words):
-```
-R0, R1, R2, R3, R12, LR, PC, xPSR
-```
+Exception *return* decodes the `EXC_RETURN` value from a `BX LR` / `POP {PC}`,
+unstacks the frame, restores the mode/flags/SP bank, and (if
+`SCR.SLEEPONEXIT` is set and we return to Thread mode) re-enters WFI sleep.
 
-### 5.3 Interrupt Latency
+**Stack frame** (8 words): `R0, R1, R2, R3, R12, LR, ReturnAddr, xPSR`
+
+### 5.3 Per-core NVIC (dual core)
+
+Each Cortex-M0+ has its **own** SCS at 0xE000E000. The simulator models both
+with one `Scs` object that switches register banks (`set_active_core()`, the
+same trick used for the SIO); SysTick, the NVIC enables/pending, IPR and SCR
+are therefore per-core. Every peripheral holds an `InterruptController` that
+fans its IRQ line out to *both* cores - each core's NVIC then independently
+decides whether to take it (per-core enable + priority + PRIMASK).
+
+### 5.4 Sleep (WFI / WFE / SEV)
+
+`Cpu` has an `event` register and an `asleep` flag. `WFI` sleeps until any
+interrupt is pending; `WFE` consumes a pending event or sleeps until one
+arrives; `SEV` sets the event on both cores; exception entry is a wake event.
+`Simulator::run()` keeps peripheral time advancing through a sleep so a
+timer/GPIO IRQ can still wake the core.
+
+### 5.5 Interrupt Latency
 
 | Event | Cycles |
 |-------|--------|
-| Interrupt asserted  latency point | 1-3 |
-| Latency point  exception entry | ~6 |
-| Total (best case) | ~10-15 cycles |
+| Interrupt asserted -> checked (between instructions) | 0-1 instr |
+| Exception entry (stacking + vector fetch) | modelled as a single step |
+
+The functional model takes the exception at the next `step()` boundary; the
+profiler's per-vector "handler cycles" measure covers entry-to-return.
 
 ---
 
@@ -882,16 +904,24 @@ R0, R1, R2, R3, R12, LR, PC, xPSR
 ### 6.1 Clock Sources
 
 ```
-XOSC (12 MHz crystal)
-
-  Reference Clock (12 MHz)
-
-  ├─ CPU PLL (multiply by 40)  480 MHz
-  │     └ Post-divider (/4)  125 MHz (CPU clock)
-  │
-  └─ USB PLL (multiply by 40)  480 MHz
-        └ Post-divider (/10)  48 MHz (USB clock)
+ROSC (ring oscillator, boot default)   XOSC (12 MHz crystal)
+                                             |
+                                    Reference Clock (12 MHz)
+                                             |
+   ┌── SYS PLL: VCO = 12 MHz * FBDIV(125) = 1500 MHz
+   │            out = VCO / (POSTDIV1(6) * POSTDIV2(2)) = 125 MHz  -> clk_sys
+   │
+   └── USB PLL: VCO = 12 MHz * FBDIV(40)  = 480 MHz
+                out = VCO / (5 * 2) = 48 MHz  -> clk_usb
 ```
+
+Modelled peripherals (functional, not cycle-exact for the analog parts):
+`XOSC` and `ROSC` report STABLE/ENABLED once their enable magic is written
+(ROSC boots enabled - the RP2040 runs from it out of reset); `Pll::output_hz`
+computes the formula above from the FBDIV / POSTDIV register fields and
+returns 0 unless the PLL is locked. The simulator's timing base is still a
+fixed 125 MHz clk_sys - `Pll::output_hz` is not yet fed back into the
+peripheral pacing (pico-sdk always configures exactly this recipe).
 
 ### 6.2 Clock Configuration
 
@@ -936,42 +966,58 @@ class Clock {
 
 ## 7. Debugging Interface
 
-### 7.1 GDB Stub
+### 7.1 GDB Stub  (`src/debuggers/gdb_stub.{h,cpp}`)
 
-Implements GDB Remote Serial Protocol (RSP):
+Implements the GDB Remote Serial Protocol (RSP). `handle_packet()` is a pure
+`string -> string` function (transport-free, fully unit-tested); `serve(port)`
+adds a TCP loop (winsock / BSD sockets). Verified end-to-end against a real
+`arm-none-eabi-gdb`.
 
 ```
-Target: arm-none-eabi (32-bit ARM)
-Debugger: arm-none-eabi-gdb
+Target: arm-none-eabi (r0-r12, sp, lr, pc, xpsr; 17 regs x 8 hex, LE)
 
-Remote Protocol packets:
-  $g#XX           - Read all registers
-  $p0#XX          - Read register 0
-  $G...#XX        - Write all registers
-  $P0=...#XX      - Write register 0
-  $m addr,size#XX - Read memory
-  $M addr,size:data#XX - Write memory
-  $c#XX           - Continue execution
-  $s#XX           - Step one instruction
-  $z0,addr,kind#XX - Insert breakpoint
-  $Z0,addr,kind#XX - Remove breakpoint
+Supported packets:
+  $g / $G                 - read / write all registers
+  $p<n> / $P<n>=<val>     - read / write one register
+  $m<addr>,<len>          - read memory      (E01 on a bus fault)
+  $M<addr>,<len>:<data>   - write memory
+  $c / $s , vCont;c / ;s  - continue / step  (S05 / S0B stop replies)
+  $Z0 / $z0               - set / clear a software breakpoint
+  $?                      - halt reason
+  qSupported, qAttached, qC, QStartNoAckMode, H, D, k
 ```
+
+CLI: `rp2040-sim --gdb <port> [--entry] <firmware.elf>`.
 
 ### 7.2 Breakpoint Types
 
-- **Software breakpoints**: Replace instruction with BKPT
-- **Watchpoints**: (optional) monitor memory reads/writes
-- **Hardware breakpoints**: (N/A for simulator, use software)
+- **Software breakpoints**: address set, checked before each executed
+  instruction on continue/step (the instruction stream is not patched).
+- **Watchpoints ($Z2-4)**: not yet implemented.
 
-### 7.3 PIO Inspector
+### 7.3 PIO Debugger  (`src/debuggers/pio_debugger.{h,cpp}`)
 
-Additional commands for PIO debugging:
+Direct inspection of the two PIO blocks (no RSP transport):
 
-```
-$Qpio:dump_sm0#XX      - Dump SM0 state
-$Qpio:fifo_status#XX   - Show FIFO levels
-$Qpio:set_breakpoint#XX - Break when SM reaches address
-```
+- **Per-SM breakpoints** keyed by `(block, sm, program address)`; `run()`
+  advances both blocks one system clock at a time and stops when an enabled
+  SM is about to execute a breakpoint address.
+- **`step()`** - one system clock over both blocks.
+- **`inspect(block, sm)`** - PC, X, Y, OSR, ISR + shift counts, TX/RX FIFO
+  levels, enabled/stall flags, retired-instruction count, and the
+  disassembly of the next instruction.
+- **Instruction trace** - `(cycle, block, sm, pc, encoded word)` per retired
+  SM instruction.
+
+The disassembler (`src/pio/pio_disasm.{h,cpp}`) renders any 16-bit PIO word
+as pioasm text and is verified as the exact inverse of the assembler.
+
+### 7.4 Profiler  (`src/debuggers/profiler.{h,cpp}`)
+
+Drives the machine like `Simulator::run()` while recording a per-PC hot-spot
+histogram (exec count + cycles), overall CPI, and per-vector exception stats
+(entry count, total/max handler cycles - handler frames are tracked on a
+stack so nested/preempted handlers are attributed correctly). CLI: `--profile`.
 
 ---
 
@@ -995,34 +1041,56 @@ Loader must:
 4. Load segments into memory
 5. Set PC = entry point
 
-### 8.2 UF2 Format
+### 8.2 UF2 Format  (`src/loaders/uf2_loader.{h,cpp}`)
 
-Raspberry Pi's bootloader format:
+Raspberry Pi's drag-and-drop bootloader format: a flat stream of 512-byte
+blocks, each with up to 476 bytes of payload and an absolute target address.
 
 ```
-UF2 Block Structure:
-├─ Start marker (0x0A324655)
-├─ Target address
-├─ Data (256 bytes)
-├─ Block size
-└─ End marker (0x0AB16F30)
+UF2 block (512 bytes, little-endian):
+  +0x000  magicStart0 = 0x0A324655   ("UF2\n")
+  +0x004  magicStart1 = 0x9E5D5157
+  +0x008  flags        (bit 0 = not-main-flash, bit 13 = familyID present)
+  +0x00C  targetAddr
+  +0x010  payloadSize  (<= 476)
+  +0x014  blockNo
+  +0x018  numBlocks
+  +0x01C  familyID     (RP2040 = 0xE48BFF56)
+  +0x020  data[476]
+  +0x1FC  magicEnd    = 0x0AB16F30
 ```
 
-### 8.3 PIO Assembly
+The loader validates both start magics + the end magic, `numBlocks` vs the
+file length, the payload cap, and the family ID (when present); skips
+not-main-flash blocks; and copies each payload through the Memory backdoor.
+`Simulator::load()` dispatches on the `.uf2` extension and always resets
+through the image's vector table.
+
+### 8.3 PIO Assembler  (`src/pio/pio_assembler.{h,cpp}`)
+
+A two-pass assembler for the SDK's `pioasm` language (minus the code-gen
+back-ends, which the simulator does not need):
 
 ```
 .program blink
-.sideset 1
-
-  set pins, 1  [3]    side 1
-  set pins, 0  [3]    side 0
-  jmp 0
+.side_set 1
+.wrap_target
+  set pins, 1  [3]  side 1
+  set pins, 0  [3]  side 0
+.wrap
 ```
 
-Must compile to:
-- Machine instructions
-- Symbol resolution
-- Address calculation
+- Directives: `.program`, `.define [PUBLIC]`, `.origin`,
+  `.side_set N [opt] [pindirs]`, `.wrap_target`, `.wrap`.
+- Labels (`name:` / `PUBLIC name:`), forward and backward.
+- Expression evaluator: `+ - *`, unary `- ~ ::`, parens, hex/bin/dec,
+  symbols (defines and labels share one table).
+- Output: the encoded 16-bit words plus origin / wrap window / side-set
+  configuration / public symbol table.
+- `line N:` diagnostics on error.
+
+Encodings are verified by round-tripping through `pio_decode` and the
+disassembler.
 
 ---
 
