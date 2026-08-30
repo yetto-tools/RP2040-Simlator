@@ -320,6 +320,17 @@ bool StateMachine::exec(const PioInstr& in) {
     return true;
 }
 
+void StateMachine::exec_immediate(std::uint16_t word) {
+    const PioInstr in = pio_decode(word);
+    const std::uint8_t saved_pc = pc;
+    const bool ok = exec(in);
+    // Only JMP is meant to move the PC from here (pico-sdk uses it that way).
+    // Any other op ran for its side effects; put the PC back where the
+    // program left it, and never leave the SM stalled on an injected op.
+    if (in.op != PioOp::JMP || !ok) pc = saved_pc;
+    if (!ok) stall_ = Stall::None;
+}
+
 StateMachine::TickOutcome StateMachine::tick() {
     if (!enabled_ || program_ == nullptr) return {};
 

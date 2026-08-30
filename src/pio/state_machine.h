@@ -74,6 +74,15 @@ public:
     // Advance by one post-divider clock.
     TickOutcome tick();
 
+    // Execute one instruction out of band (PIO SMx_INSTR write / OUT EXEC).
+    // Best effort: a stalling instruction is not retried here.
+    void exec_immediate(std::uint16_t word);
+
+    // The instruction word the SM would fetch next (SMx_INSTR read).
+    std::uint16_t current_instruction() const {
+        return program_ != nullptr ? program_[pc & 0x1Fu] : 0u;
+    }
+
     // --- state (public for the register block and tests) ---
     SmConfig cfg;
     PioFifo tx;

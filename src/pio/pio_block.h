@@ -42,6 +42,7 @@ public:
     // Fractional clock divider for one SM: SM clock = sys clock / (int + frac/256).
     // An integer part of 0 means 65536 (datasheet 3.5.5).
     void set_clkdiv(unsigned sm, std::uint16_t int_part, std::uint8_t frac);
+    void restart_clkdiv(unsigned sm) { if (sm < kNumSm) clkacc_[sm] = 0; }
 
     // Advance the whole block by one system clock: each SM whose divided clock
     // ticks this cycle executes one instruction.

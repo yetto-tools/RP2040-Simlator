@@ -230,26 +230,27 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: CRITICAL (timing is key)
 - **Dependencies**: P2.1, P2.2, P2.3
 
-#### P2.6: PIO  GPIO Integration
-- [ ] OUT driving GPIO pins
-- [ ] SET driving GPIO pins
-- [ ] SIDESET functionality
-- [ ] IN reading GPIO pins
-- [ ] Pin override logic
-- **Tests**: 15+ GPIO interaction tests
-- **Effort**: 15 hours
-- **Priority**: CRITICAL
-- **Dependencies**: P2.1, P2.2, P3.1
+#### P2.6: PIO  GPIO Integration  [DONE]
+- [x] OUT / SET / MOV driving GPIO pins, IN reading them (via PINCTRL groups)
+- [x] SIDESET (data + optional enable, PINS or PINDIRS)
+- [x] JMP PIN / WAIT PIN / WAIT GPIO through the shared Gpio model
+- [ ] Input synchroniser bypass, pin override logic (low priority)
+- **Tests**: test_pio_block
 
-#### P2.7: PIO  CPU Integration
-- [ ] TX FIFO write (CPU  PIO)
-- [ ] RX FIFO read (PIO  CPU)
-- [ ] Configuration registers (CTRL, EXECCTRL, PINCTRL)
-- [ ] Program loading (INSTR_MEM)
-- [ ] Status polling
-- **Tests**: 20+ CPU-PIO interaction
+#### P2.7: PIO  CPU Integration  [IN PROGRESS]
+- [x] `PioRegisters` BusPeripheral @ 0x50200000 / 0x50300000
+      (`src/pio/pio_registers.{h,cpp}`)
+- [x] CTRL (SM_ENABLE / SM_RESTART / CLKDIV_RESTART)
+- [x] TXF0-3 write -> TX FIFO, RXF0-3 read -> RX FIFO; FSTAT, FLEVEL
+- [x] INSTR_MEM0-31 program load/read; SMx_INSTR immediate execute
+- [x] SMx_CLKDIV / EXECCTRL / SHIFTCTRL / PINCTRL decode into SmConfig;
+      SMx_ADDR (PC, read-only); FJOIN
+- [x] IRQ register (read / write-1-clear) + IRQ_FORCE
+- [ ] INTR / IRQ0_INTE / IRQ1_INTE routing to the NVIC (state present,
+      not yet pending an IRQ); FDEBUG stall/overflow bits
+- **Tests**: `tests/unit/test_pio_registers.cpp` (10 cases) - incl. a blink
+      program configured entirely through MMIO
 - **Effort**: 20 hours
-- **Priority**: CRITICAL
 - **Dependencies**: P2.1-P2.6
 
 #### P2.8: Auto-Push & Auto-Pull

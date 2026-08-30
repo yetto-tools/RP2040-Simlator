@@ -51,6 +51,7 @@ add_library(rp2040_core STATIC
     src/pio/pio_decode.cpp
     src/pio/state_machine.cpp
     src/pio/pio_block.cpp
+    src/pio/pio_registers.cpp
     src/peripherals/gpio.cpp
     src/peripherals/sio.cpp
     src/peripherals/iobank0.cpp
