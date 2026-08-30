@@ -89,7 +89,21 @@ Stage 3 (Execute):
 
 **Pipeline forwarding**: Minimal (only for certain instructions). Not critical for M0+.
 
-### 1.4 Thumb-2 ISA Coverage
+### 1.4 Thumb ISA Coverage
+
+> This section originally listed the full Thumb-2 (ARMv7-M) set. The Cortex-M0+
+> implements only **ARMv6-M**: every 16-bit Thumb encoding plus six 32-bit ones
+> (`BL`, `MSR`, `MRS`, `DSB`, `DMB`, `ISB`). The lists below are kept for
+> reference but entries marked *(v7-M)* are **not decoded** - the decoder
+> (`src/core/thumb_decode.cpp`, `include/thumb_isa.h`) returns `UNDEFINED` for
+> them, which the CPU escalates to HardFault.
+>
+> Not in ARMv6-M: `IT`/`ITxyz`, `CBZ`/`CBNZ`, `LDRD`/`STRD`, `LDM.W`/`STM.W`,
+> `UMULL`/`SMULL`, `TBB`/`TBH`, `MLA`/`MLS`, `SDIV`/`UDIV`, `BFI`/`UBFX`,
+> `MOVW`/`MOVT`, `PLD`, coprocessor access, and all 32-bit data processing.
+>
+> The decoder is a pure function `(halfword[s]) -> DecodedInstr`; the execute
+> stage that applies effects is tracked separately (P1.2 tail / P1.1 pipeline).
 
 **Total instructions**: 177 (baseline Thumb-2)
 

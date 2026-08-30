@@ -42,6 +42,7 @@ add_library(rp2040_core STATIC
     src/core/bus.cpp
     src/core/memory.cpp
     src/core/registers.cpp
+    src/core/thumb_decode.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)
 target_link_libraries(rp2040_core PRIVATE rp2040_project_options)

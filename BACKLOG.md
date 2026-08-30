@@ -80,17 +80,23 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARCHITECTURE.md 1.1-1.2, 1.5 (rewritten for ARMv6-M, not Thumb-2)
 - **Files**: `src/core/registers.{h,cpp}`
 
-#### P1.2: Thumb-2 Instruction Decoder
-- [ ] Load/Store instructions (LDR, STR, LDRB, STRB, etc.)
-- [ ] Arithmetic (ADD, SUB, MUL, CMP, etc.)
-- [ ] Logic operations (AND, OR, XOR, LSL, LSR, etc.)
-- [ ] Branch instructions (B, BL, BX, Bcc)
-- [ ] Conditional execution (IT, CBZ, CBNZ)
-- [ ] Shift & rotate (LSL, LSR, ASR, ROR)
-- **Tests**: 30+ per instruction category
+#### P1.2: Thumb Instruction Decoder (ARMv6-M)  [IN PROGRESS]
+- [x] Decoder framework: `DecodedInstr`, `Mnemonic`, `is_32bit_thumb()`
+- [x] A5.2.1 shift/add/sub/mov/cmp (incl. LSL #0 -> MOVS reg)
+- [x] A5.2.2 data processing (16 ops, AND..MVN, incl. RSB/MUL forms)
+- [x] A5.2.3 special data + BX/BLX (high-register ADD/CMP/MOV)
+- [x] Load/store single: literal, register offset, imm offset (w/h/b), SP-rel
+- [x] ADR / ADD(SP+imm); A5.2.5 misc (extend, PUSH/POP, REV*, CPS, BKPT, hints)
+- [x] STM/LDM (writeback rules); Bcc/SVC/UDF; B (T2)
+- [x] 32-bit: BL (offset reconstruction), MRS, MSR, DSB/DMB/ISB
+- [x] Rejects ARMv7-M-only encodings (IT, CBZ/CBNZ, LDM.W) as UNDEFINED
+- [ ] Execute stage (decode -> effects on RegisterFile/Memory) -> next
+- **Tests**: `tests/unit/test_thumb_decode.cpp` (13 cases, 219 assertions)
 - **Effort**: 60 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P1.1
+- **Design**: ARCHITECTURE.md 1.4; ARMv6-M ARM chapter A5
+- **Files**: `include/thumb_isa.h`, `src/core/thumb_decode.cpp`
 
 #### P1.3: Memory Subsystem  [IN PROGRESS]
 - [x] ROM (16 KB, read-only) - direct stores fault as WriteToReadOnly
