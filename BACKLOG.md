@@ -147,7 +147,8 @@ Week 12:    PHASE 9 - Documentation & Release
       can wake it (`ExecStatus::WaitingForInterrupt` is not a stop)
 - [x] AIRCR.SYSRESETREQ (VECTKEY-guarded) -> system-reset hook; the Simulator
       resets both cores and stops core1
-- [ ] SLEEPONEXIT / SLEEPDEEP
+- [x] SCR.SLEEPONEXIT: core re-enters WFI sleep when it returns to Thread mode
+- [ ] SLEEPDEEP (no separate deep-sleep clock model)
 - **Tests**: test_exceptions (87), test_scs (81), test_cpu_exec WFI/WFE/SEV
 - **Effort**: 15 hours
 - **Priority**: HIGH

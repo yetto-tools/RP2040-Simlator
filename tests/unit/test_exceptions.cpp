@@ -49,6 +49,25 @@ TEST_CASE_FIXTURE(ExcFix, "reset loads MSP and PC from the vector table") {
     CHECK(regs.mode() == CpuMode::Thread);
 }
 
+TEST_CASE_FIXTURE(ExcFix, "SCR.SLEEPONEXIT: the core sleeps on returning to Thread mode") {
+    cpu.reset();
+    code(kCode, {0xE7FE});                          // thread: b .
+    code(0x20000300u, {0x4770});                    // SysTick handler: bx lr
+    write_vector(kExcSysTick, 0x20000300u | 1u);
+
+    cpu.set_sleep_on_exit(true);
+    cpu.set_exception_priority(kExcSysTick, 0);
+    cpu.pend_exception(kExcSysTick);
+
+    CHECK(cpu.step() == ExecStatus::ExceptionTaken); // enter handler
+    CHECK(cpu.step() == ExecStatus::Ok);             // bx lr -> return to thread
+    CHECK(cpu.asleep());                             // ... and straight to sleep
+    CHECK(cpu.step() == ExecStatus::WaitingForInterrupt);
+
+    cpu.pend_exception(kExcSysTick);                 // next tick wakes it
+    CHECK(cpu.step() == ExecStatus::ExceptionTaken);
+}
+
 TEST_CASE_FIXTURE(ExcFix, "exception entry stacks the 8-word frame and vectors") {
     cpu.reset();
     regs.set(0, 0x1111);

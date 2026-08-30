@@ -149,6 +149,7 @@ BusStatus Scs::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
             return BusStatus::Ok;
         case kSCR:
             scr_ = value & 0x16u;
+            cpu_.set_sleep_on_exit((scr_ & (1u << 1)) != 0);  // SLEEPONEXIT
             return BusStatus::Ok;
         case kSHPR2:
             cpu_.set_exception_priority(kExcSVCall, static_cast<std::uint8_t>(value >> 24));

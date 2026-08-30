@@ -50,6 +50,7 @@ void Cpu::reset() {
     asleep_ = false;
     sleep_is_wfe_ = false;
     event_ = false;
+    sleep_on_exit_ = false;
     const BusResult<std::uint32_t> sp = mem_.read_word(vtor_);
     const BusResult<std::uint32_t> pc = mem_.read_word(vtor_ + 4u);
     if (sp.ok()) regs_.set_msp(sp.value);
@@ -255,6 +256,12 @@ ExecStatus Cpu::exception_return(std::uint32_t exc_return) {
         regs_.set_control(regs_.control_npriv(), return_psp);
     }
     regs_.set_pc(w[kFrameReturnAddress] & ~std::uint32_t{1});
+
+    // SCR.SLEEPONEXIT: on returning to Thread mode, go straight back to sleep.
+    if (sleep_on_exit_ && regs_.mode() == CpuMode::Thread) {
+        asleep_ = true;
+        sleep_is_wfe_ = false;
+    }
     return ExecStatus::Ok;
 }
 

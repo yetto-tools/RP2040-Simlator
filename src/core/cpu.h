@@ -100,6 +100,9 @@ public:
     // The sibling core to send SEV events to (dual-core). Borrowed.
     void set_sev_target(Cpu* other) { sev_target_ = other; }
 
+    // SCR.SLEEPONEXIT: sleep on returning from the last active exception.
+    void set_sleep_on_exit(bool on) { sleep_on_exit_ = on; }
+
 private:
     // R15 reads yield instr_pc + 4 (ARMv6-M); callers needing Align(PC,4)
     // mask the low two bits themselves.
@@ -127,6 +130,7 @@ private:
     bool asleep_ = false;       // in a WFI/WFE sleep
     bool sleep_is_wfe_ = false; // sleep entered by WFE (also wakes on event)
     bool event_ = false;        // WFE event register
+    bool sleep_on_exit_ = false;
     Cpu* sev_target_ = nullptr;
 };
 
