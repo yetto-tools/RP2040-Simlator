@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "debuggers/gdb_stub.h"
 #include "simulator.h"
 
 namespace {
@@ -17,6 +18,7 @@ void print_usage(const char* argv0) {
     std::cout << "Usage: " << argv0 << " [options] <firmware.elf>\n"
               << "\n"
               << "Options:\n"
+              << "  --gdb <port>  Wait for arm-none-eabi-gdb on localhost:<port>\n"
               << "  --max <n>   Stop after n instructions (default 10000000)\n"
               << "  --entry     Start at e_entry instead of the reset vector\n"
               << "  --version   Print the core version and exit\n"
@@ -39,7 +41,8 @@ const char* status_name(rp2040::ExecStatus s) {
     return "?";
 }
 
-int run_image(const std::string& path, std::uint64_t max_instructions, bool from_entry) {
+int run_image(const std::string& path, std::uint64_t max_instructions, bool from_entry,
+              int gdb_port) {
     rp2040::Simulator sim;
     const rp2040::ElfImage img = sim.load(path, from_entry);
     if (!img.ok) {
@@ -48,6 +51,16 @@ int run_image(const std::string& path, std::uint64_t max_instructions, bool from
     }
     std::printf("loaded %u segment(s), 0x%08X-0x%08X, entry 0x%08X\n",
                 img.segments_loaded, img.lowest_addr, img.highest_addr, img.entry);
+
+    if (gdb_port > 0) {
+        rp2040::GdbStub stub(sim);
+        if (!stub.serve(static_cast<std::uint16_t>(gdb_port))) {
+            std::cerr << "error: could not start the gdb stub on port " << gdb_port << '\n';
+            return 1;
+        }
+        std::printf("gdb session ended\n");
+        return 0;
+    }
 
     const rp2040::Simulator::RunResult r = sim.run(max_instructions);
     if (r.self_branch) {
@@ -76,6 +89,7 @@ int run_image(const std::string& path, std::uint64_t max_instructions, bool from
 int main(int argc, char** argv) {
     std::uint64_t max_instructions = 10'000'000;
     bool from_entry = false;
+    int gdb_port = 0;
     std::string image;
 
     for (int i = 1; i < argc; ++i) {
@@ -88,6 +102,11 @@ int main(int argc, char** argv) {
             max_instructions = std::stoull(argv[++i]);
             continue;
         }
+        if (arg == "--gdb") {
+            if (i + 1 >= argc) { std::cerr << "error: --gdb needs a port\n"; return 2; }
+            gdb_port = std::stoi(argv[++i]);
+            continue;
+        }
         if (!arg.empty() && arg.front() == '-') {
             std::cerr << "error: unrecognised argument '" << arg << "'\n";
             print_usage(argv[0]);
@@ -97,5 +116,5 @@ int main(int argc, char** argv) {
     }
 
     if (image.empty()) { print_usage(argv[0]); return 2; }
-    return run_image(image, max_instructions, from_entry);
+    return run_image(image, max_instructions, from_entry, gdb_port);
 }

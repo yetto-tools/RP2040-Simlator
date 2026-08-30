@@ -584,24 +584,22 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P2.1, P2.2, P2.3
 
-#### P7.4: GDB Stub (Remote Serial Protocol)
-- [ ] TCP server (port 3333)
-- [ ] RSP packet parsing
-- [ ] Register read/write
-  - [ ] $g (read all)
-  - [ ] $p (read one)
-  - [ ] $G (write all)
-  - [ ] $P (write one)
-- [ ] Memory read/write
-  - [ ] $m addr,size
-  - [ ] $M addr,size:data
-- [ ] Execution control
-  - [ ] $c (continue)
-  - [ ] $s (step)
-  - [ ] $C (continue with signal)
-  - [ ] $S (step with signal)
-- [ ] Breakpoint management
-  - [ ] $z0 (insert software)
+#### P7.4: GDB Stub (Remote Serial Protocol)  [IN PROGRESS]
+- [x] `GdbStub` (`src/debuggers/gdb_stub.{h,cpp}`): pure `handle_packet()`
+      protocol handler over a `Simulator&`, plus framing/checksum helpers
+- [x] $g / $G / $p / $P (r0-r12, sp, lr, pc, xpsr; also reg 25 = xpsr)
+- [x] $m / $M (byte hex, E01 on bus fault)
+- [x] $c / $s / vCont;c / vCont;s -> S05 / S0B stop replies
+- [x] $Z0 / $z0 software breakpoints (address set, checked on continue)
+- [x] $?, qSupported (PacketSize + QStartNoAckMode+), qAttached, qC,
+      threadinfo, QStartNoAckMode, H, D, k
+- [x] TCP transport `serve(port)` (winsock / BSD sockets); CLI `--gdb <port>`
+- [ ] Watchpoints ($Z2-4), $qXfer:features:read (target.xml), per-core
+      thread switching, run-length-encoded replies, live arm-none-eabi-gdb
+      integration test
+- **Tests**: `tests/unit/test_gdb_stub.cpp` (7 cases)
+- **Design**: GDB RSP spec; ARM m-profile register layout
+- **Files**: `src/debuggers/gdb_stub.{h,cpp}`, `src/main.cpp`
   - [ ] $Z0 (remove software)
 - [ ] Watchpoint support (optional)
 - **Tests**: 25+ GDB scenarios
