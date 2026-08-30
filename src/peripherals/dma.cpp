@@ -47,8 +47,8 @@ void Dma::refresh_irqs() {
     for (unsigned k = 0; k < 2; ++k) {
         const std::uint32_t mis = (intr_ | intf_[k]) & inte_[k];
         const unsigned irq = (k == 0) ? kIrq0 : kIrq1;
-        if (mis != 0) cpu_.pend_exception(irq);
-        else          cpu_.clear_pending(irq);
+        if (mis != 0) nvic_.pend_exception(irq);
+        else          nvic_.clear_pending(irq);
     }
 }
 

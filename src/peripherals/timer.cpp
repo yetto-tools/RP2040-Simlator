@@ -14,7 +14,7 @@ enum : std::uint32_t {
 }  // namespace
 
 Timer::Timer(Cpu& cpu, std::uint32_t cycles_per_us)
-    : cpu_(cpu), cycles_per_us_(cycles_per_us == 0 ? 1u : cycles_per_us) {}
+    : nvic_(cpu), cycles_per_us_(cycles_per_us == 0 ? 1u : cycles_per_us) {}
 
 void Timer::fire_due_alarms() {
     const std::uint32_t low = static_cast<std::uint32_t>(counter_ & 0xFFFFFFFFu);
@@ -31,8 +31,8 @@ void Timer::fire_due_alarms() {
 void Timer::refresh_irqs() {
     const std::uint8_t asserted = static_cast<std::uint8_t>((intr_ | intf_) & inte_);
     for (unsigned i = 0; i < kNumAlarms; ++i) {
-        if ((asserted & (1u << i)) != 0) cpu_.pend_exception(kIrq0 + i);
-        else                             cpu_.clear_pending(kIrq0 + i);
+        if ((asserted & (1u << i)) != 0) nvic_.pend_exception(kIrq0 + i);
+        else                             nvic_.clear_pending(kIrq0 + i);
     }
 }
 

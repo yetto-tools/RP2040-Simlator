@@ -101,12 +101,12 @@ std::uint32_t PioRegisters::compute_intr() const {
 }
 
 void PioRegisters::poll_interrupts() {
-    if (cpu_ == nullptr) return;
+    if (nvic_irq0_ == 0) return;
     const std::uint32_t intr = compute_intr();
     const std::uint32_t mis0 = (intr | irq0_intf_) & irq0_inte_;
     const std::uint32_t mis1 = (intr | irq1_intf_) & irq1_inte_;
-    if (mis0 != 0) cpu_->pend_exception(nvic_irq0_);     else cpu_->clear_pending(nvic_irq0_);
-    if (mis1 != 0) cpu_->pend_exception(nvic_irq0_ + 1); else cpu_->clear_pending(nvic_irq0_ + 1);
+    if (mis0 != 0) nvic_.pend_exception(nvic_irq0_);     else nvic_.clear_pending(nvic_irq0_);
+    if (mis1 != 0) nvic_.pend_exception(nvic_irq0_ + 1); else nvic_.clear_pending(nvic_irq0_ + 1);
 }
 
 std::uint32_t PioRegisters::read_flevel() const {

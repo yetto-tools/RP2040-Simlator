@@ -75,8 +75,8 @@ void Adc::refresh_irq() {
     const bool fifo_int = fifo_.size() >= (thresh == 0 ? 1u : thresh);
     const std::uint32_t ris = fifo_int ? 1u : 0u;
     const std::uint32_t mis = (ris | (intf_ & 1u)) & (inte_ & 1u);
-    if (mis != 0) cpu_.pend_exception(kIrq);
-    else          cpu_.clear_pending(kIrq);
+    if (mis != 0) nvic_.pend_exception(kIrq);
+    else          nvic_.clear_pending(kIrq);
 }
 
 void Adc::on_cycles(std::uint64_t sys_cycles) {

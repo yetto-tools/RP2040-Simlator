@@ -12,6 +12,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -34,11 +35,14 @@ public:
     void on_cycles(std::uint64_t sys_cycles);
     std::uint64_t now_us() const { return counter_; }
 
+    // Wire the second Cortex-M0+ core so its NVIC also sees TIMER_IRQ_0..3.
+    void connect_core1(Cpu* core1) { nvic_.connect(core1); }
+
 private:
     void fire_due_alarms();
     void refresh_irqs();
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t cycles_per_us_;
     std::uint64_t accum_ = 0;
     std::uint64_t counter_ = 0;

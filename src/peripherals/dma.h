@@ -13,6 +13,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -25,7 +26,7 @@ public:
     static constexpr unsigned kIrq0 = kExcExternal0 + 11;  // DMA_IRQ_0 == IRQ11
     static constexpr unsigned kIrq1 = kExcExternal0 + 12;
 
-    explicit Dma(Cpu& cpu, Memory& mem) : cpu_(cpu), mem_(mem) {}
+    explicit Dma(Cpu& cpu, Memory& mem) : nvic_(cpu), mem_(mem) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
@@ -36,6 +37,9 @@ public:
     std::uint32_t trans_count(unsigned ch) const { return chan_[ch].trans_count; }
     bool channel_busy(unsigned ch) const { return (chan_[ch].ctrl & (1u << 24)) != 0; }
     std::uint32_t intr() const { return intr_; }
+
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
 
 private:
     struct Channel {
@@ -49,7 +53,7 @@ private:
     void run_transfer(unsigned ch);
     void refresh_irqs();
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     Memory& mem_;
     std::array<Channel, kNumChannels> chan_{};
     std::uint32_t intr_ = 0;                  // per-channel raw interrupt

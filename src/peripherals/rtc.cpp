@@ -70,8 +70,8 @@ void Rtc::check_alarm() {
     alarm_matched_ = matched;
 
     const std::uint32_t mis = (intr_ | intf_) & inte_;
-    if (mis != 0) cpu_.pend_exception(kIrq);
-    else          cpu_.clear_pending(kIrq);
+    if (mis != 0) nvic_.pend_exception(kIrq);
+    else          nvic_.clear_pending(kIrq);
 }
 
 void Rtc::on_cycles(std::uint64_t sys_cycles) {

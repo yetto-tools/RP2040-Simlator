@@ -51,6 +51,22 @@ Simulator::Simulator() {
     cpu_.set_sev_target(&cpu1_);
     cpu1_.set_sev_target(&cpu_);
 
+    // Every peripheral IRQ is wired to both cores; each core's NVIC decides.
+    scs_.connect_core1(&cpu1_);
+    timer_.connect_core1(&cpu1_);
+    dma_.connect_core1(&cpu1_);
+    adc_.connect_core1(&cpu1_);
+    uart0_.connect_core1(&cpu1_);
+    uart1_.connect_core1(&cpu1_);
+    spi0_.connect_core1(&cpu1_);
+    spi1_.connect_core1(&cpu1_);
+    pwm_.connect_core1(&cpu1_);
+    i2c0_.connect_core1(&cpu1_);
+    i2c1_.connect_core1(&cpu1_);
+    rtc_.connect_core1(&cpu1_);
+    pio0_regs_.connect_core1(&cpu1_);
+    pio1_regs_.connect_core1(&cpu1_);
+
     sio_.connect_cores(&cpu_, &cpu1_);
     sio_.on_core1_launch([this](std::uint32_t vtor, std::uint32_t sp, std::uint32_t entry) {
         regs1_.reset();
@@ -96,14 +112,17 @@ ElfImage Simulator::load(const std::string& path, bool from_entry) {
 
 ExecStatus Simulator::step() {
     sio_.set_active_core(0);
+    scs_.set_active_core(0);
     const std::uint64_t before = cpu_.cycle_count();
     const ExecStatus status = cpu_.step();
     const std::uint64_t spent = cpu_.cycle_count() - before;
 
     if (core1_running_) {
         sio_.set_active_core(1);
+        scs_.set_active_core(1);
         cpu1_.step();
         sio_.set_active_core(0);
+        scs_.set_active_core(0);
     }
     for (std::uint64_t i = 0; i < spent; ++i) {
         pio0_.tick();

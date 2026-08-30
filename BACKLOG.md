@@ -156,7 +156,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARMv6-M ARM B1.5, B3; ARCHITECTURE.md section 5
 - **Files**: `include/exceptions.h`, `src/core/{cpu,scs}.{h,cpp}`
 
-#### P1.6: Dual core  [IN PROGRESS]
+#### P1.6: Dual core  [DONE]
 - [x] Second `Cpu` + `RegisterFile` (core1) in the `Simulator`; step() runs
       core0 then core1 round-robin, sharing one `Memory`
 - [x] SIO rewritten per-core (`src/peripherals/sio.{h,cpp}`): CPUID follows
@@ -166,9 +166,15 @@ Week 12:    PHASE 9 - Documentation & Release
       VTOR/SP/PC and starts it (bootrom echo emulated)
 - [x] Cross-core SEV/WFE event signalling (SEV on one core wakes a WFE sleep
       on the other; see P1.4)
-- [ ] Per-core NVIC / SysTick (today only core0 has an MMIO NVIC and receives
-      peripheral IRQs); exact interleave timing
-- **Tests**: `tests/unit/test_multicore.cpp` (4 cases)
+- [x] Per-core NVIC + SysTick: `Scs` models both cores' SCS at 0xE000E000,
+      switching banks via `set_active_core()` (like the SIO); every peripheral
+      holds an `InterruptController` that fans its IRQ line out to both cores,
+      each core's NVIC then decides independently (per-core enable + priority).
+      Verified: a TIMER alarm is taken by core1 while core0 (IRQ disabled)
+      ignores it.
+- [ ] Exact instruction-interleave timing (round-robin is a simplification)
+- **Tests**: `tests/unit/test_multicore.cpp` (5 cases)
+- **Files**: `src/core/{scs,interrupt_controller}.h`, all `src/peripherals/*`
 - **Design**: RP2040 datasheet 2.3, 2.4
 
 #### P1.5: Clock Management (Basic)  [IN PROGRESS]

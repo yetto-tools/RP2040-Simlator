@@ -14,6 +14,7 @@
 
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -28,7 +29,7 @@ public:
     static constexpr unsigned kRxFifoDepth = 32;
 
     Uart(Cpu& cpu, std::uint32_t base, unsigned irq)
-        : cpu_(cpu), base_(base), irq_(irq) {}
+        : nvic_(cpu), base_(base), irq_(irq) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(base_, kSize, this); }
 
@@ -42,13 +43,16 @@ public:
     std::string take_output();                    // drains the TX log as a string
     void on_transmit(std::function<void(std::uint8_t)> cb) { tx_cb_ = std::move(cb); }
 
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
+
 private:
     void transmit(std::uint8_t byte);
     void refresh_irq();
     std::uint32_t read_fr() const;
     std::uint32_t read_ris() const;
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t base_;
     unsigned irq_;
 

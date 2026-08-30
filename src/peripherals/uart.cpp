@@ -58,8 +58,8 @@ std::uint32_t Uart::read_ris() const {
 
 void Uart::refresh_irq() {
     const std::uint32_t mis = read_ris() & imsc_;
-    if (mis != 0) cpu_.pend_exception(irq_);
-    else          cpu_.clear_pending(irq_);
+    if (mis != 0) nvic_.pend_exception(irq_);
+    else          nvic_.clear_pending(irq_);
 }
 
 BusResult<std::uint32_t> Uart::bus_read(std::uint32_t offset, BusWidth) {

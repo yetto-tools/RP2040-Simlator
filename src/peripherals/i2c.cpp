@@ -26,8 +26,8 @@ constexpr std::uint32_t kST_RFF  = 1u << 4;   // RX FIFO full
 }  // namespace
 
 void I2c::refresh_irq() {
-    if ((raw_intr_ & intr_mask_) != 0) cpu_.pend_exception(irq_);
-    else                               cpu_.clear_pending(irq_);
+    if ((raw_intr_ & intr_mask_) != 0) nvic_.pend_exception(irq_);
+    else                               nvic_.clear_pending(irq_);
 }
 
 BusResult<std::uint32_t> I2c::bus_read(std::uint32_t offset, BusWidth) {

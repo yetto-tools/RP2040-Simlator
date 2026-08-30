@@ -41,8 +41,8 @@ std::uint32_t Spi::live_ris() const {
 }
 
 void Spi::refresh_irq() {
-    if ((live_ris() & imsc_) != 0) cpu_.pend_exception(irq_);
-    else                           cpu_.clear_pending(irq_);
+    if ((live_ris() & imsc_) != 0) nvic_.pend_exception(irq_);
+    else                           nvic_.clear_pending(irq_);
 }
 
 BusResult<std::uint32_t> Spi::bus_read(std::uint32_t offset, BusWidth) {

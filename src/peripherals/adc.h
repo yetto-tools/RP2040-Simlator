@@ -14,6 +14,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -29,7 +30,7 @@ public:
 
     Adc(Cpu& cpu, std::uint32_t adc_clk_hz = 48'000'000u,
         std::uint32_t sys_clk_hz = 125'000'000u)
-        : cpu_(cpu), adc_hz_(adc_clk_hz), sys_hz_(sys_clk_hz) {}
+        : nvic_(cpu), adc_hz_(adc_clk_hz), sys_hz_(sys_clk_hz) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
@@ -44,12 +45,15 @@ public:
     std::uint16_t result() const { return result_; }
     unsigned fifo_level() const { return static_cast<unsigned>(fifo_.size()); }
 
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
+
 private:
     void convert();          // one conversion of the selected channel
     void refresh_irq();
     unsigned next_rrobin(unsigned from) const;
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t adc_hz_;
     std::uint32_t sys_hz_;
 

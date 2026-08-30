@@ -11,6 +11,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -24,7 +25,7 @@ public:
     // `rtc_tick_hz` is the clock feeding the RTC divider (48 kHz by default on
     // the RP2040, from clk_rtc); `sys_clk_hz` scales on_cycles().
     Rtc(Cpu& cpu, std::uint32_t rtc_tick_hz = 46875u, std::uint32_t sys_clk_hz = 125'000'000u)
-        : cpu_(cpu), rtc_hz_(rtc_tick_hz), sys_hz_(sys_clk_hz) {}
+        : nvic_(cpu), rtc_hz_(rtc_tick_hz), sys_hz_(sys_clk_hz) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
@@ -32,6 +33,9 @@ public:
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
     void on_cycles(std::uint64_t sys_cycles);
+
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
 
 private:
     struct DateTime {
@@ -43,7 +47,7 @@ private:
     std::uint32_t pack_date(const DateTime&) const;
     std::uint32_t pack_time(const DateTime&) const;
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t rtc_hz_;
     std::uint32_t sys_hz_;
 

@@ -14,6 +14,7 @@
 
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -27,7 +28,7 @@ public:
     static constexpr unsigned kSpi1Irq = kExcExternal0 + 19;
     static constexpr unsigned kFifoDepth = 8;   // PL022 is 8-deep on the RP2040
 
-    Spi(Cpu& cpu, std::uint32_t base, unsigned irq) : cpu_(cpu), base_(base), irq_(irq) {}
+    Spi(Cpu& cpu, std::uint32_t base, unsigned irq) : nvic_(cpu), base_(base), irq_(irq) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(base_, kSize, this); }
 
@@ -42,12 +43,15 @@ public:
     // Given the MOSI byte, return the MISO byte for the same transfer.
     void on_transfer(std::function<std::uint8_t(std::uint8_t)> cb) { xfer_cb_ = std::move(cb); }
 
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
+
 private:
     void refresh_irq();
     std::uint32_t read_sr() const;
     std::uint32_t live_ris() const;
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t base_;
     unsigned irq_;
 

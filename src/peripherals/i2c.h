@@ -12,6 +12,7 @@
 
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 
 namespace rp2040 {
@@ -25,7 +26,7 @@ public:
     static constexpr unsigned kI2c1Irq = kExcExternal0 + 24;
     static constexpr unsigned kFifoDepth = 16;
 
-    I2c(Cpu& cpu, std::uint32_t base, unsigned irq) : cpu_(cpu), base_(base), irq_(irq) {}
+    I2c(Cpu& cpu, std::uint32_t base, unsigned irq) : nvic_(cpu), base_(base), irq_(irq) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(base_, kSize, this); }
 
@@ -38,10 +39,13 @@ public:
     using SlaveFn = std::function<bool(bool is_read, std::uint8_t& byte)>;
     void set_slave(std::uint8_t addr7, SlaveFn fn) { slave_addr_ = addr7; slave_ = std::move(fn); }
 
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
+
 private:
     void refresh_irq();
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     std::uint32_t base_;
     unsigned irq_;
 

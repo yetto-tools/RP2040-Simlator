@@ -27,7 +27,7 @@ std::uint32_t Scs::read_ipr(unsigned word) const {
     std::uint32_t v = 0;
     for (unsigned b = 0; b < 4; ++b) {
         const unsigned irq = word * 4 + b;
-        v |= static_cast<std::uint32_t>(cpu_.exception_priority(kExcExternal0 + irq)) << (b * 8);
+        v |= static_cast<std::uint32_t>(cur().exception_priority(kExcExternal0 + irq)) << (b * 8);
     }
     return v;
 }
@@ -36,36 +36,36 @@ void Scs::write_ipr(unsigned word, std::uint32_t value) {
     for (unsigned b = 0; b < 4; ++b) {
         const unsigned irq = word * 4 + b;
         if (irq >= static_cast<unsigned>(kNumRp2040Irqs)) break;
-        cpu_.set_exception_priority(kExcExternal0 + irq,
+        cur().set_exception_priority(kExcExternal0 + irq,
                                    static_cast<std::uint8_t>((value >> (b * 8)) & 0xFFu));
     }
 }
 
 std::uint32_t Scs::read_shpr2() const {
-    return static_cast<std::uint32_t>(cpu_.exception_priority(kExcSVCall)) << 24;
+    return static_cast<std::uint32_t>(cur().exception_priority(kExcSVCall)) << 24;
 }
 
 std::uint32_t Scs::read_shpr3() const {
-    return (static_cast<std::uint32_t>(cpu_.exception_priority(kExcSysTick)) << 24) |
-           (static_cast<std::uint32_t>(cpu_.exception_priority(kExcPendSV)) << 16);
+    return (static_cast<std::uint32_t>(cur().exception_priority(kExcSysTick)) << 24) |
+           (static_cast<std::uint32_t>(cur().exception_priority(kExcPendSV)) << 16);
 }
 
 BusResult<std::uint32_t> Scs::bus_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kSYST_CSR: {
-            const std::uint32_t v = syst_csr_;
-            syst_csr_ &= ~kCountFlag;  // COUNTFLAG clears on read
+            const std::uint32_t v = syst_csr_[active_];
+            syst_csr_[active_] &= ~kCountFlag;  // COUNTFLAG clears on read
             return {v, BusStatus::Ok};
         }
-        case kSYST_RVR:  return {syst_rvr_ & kSysTick24, BusStatus::Ok};
-        case kSYST_CVR:  return {syst_cvr_ & kSysTick24, BusStatus::Ok};
+        case kSYST_RVR:  return {syst_rvr_[active_] & kSysTick24, BusStatus::Ok};
+        case kSYST_CVR:  return {syst_cvr_[active_] & kSysTick24, BusStatus::Ok};
         case kSYST_CALIB: return {0u, BusStatus::Ok};  // no calibration data
 
         case kNVIC_ISER:
         case kNVIC_ICER: {
             std::uint32_t v = 0;
             for (unsigned i = 0; i < static_cast<unsigned>(kNumRp2040Irqs); ++i) {
-                if (cpu_.irq_enabled(i)) v |= (1u << i);
+                if (cur().irq_enabled(i)) v |= (1u << i);
             }
             return {v, BusStatus::Ok};
         }
@@ -73,21 +73,21 @@ BusResult<std::uint32_t> Scs::bus_read(std::uint32_t offset, BusWidth) {
         case kNVIC_ICPR: {
             std::uint32_t v = 0;
             for (unsigned i = 0; i < static_cast<unsigned>(kNumRp2040Irqs); ++i) {
-                if (cpu_.is_pending(kExcExternal0 + i)) v |= (1u << i);
+                if (cur().is_pending(kExcExternal0 + i)) v |= (1u << i);
             }
             return {v, BusStatus::Ok};
         }
 
         case kCPUID: return {kCpuid, BusStatus::Ok};
         case kICSR: {
-            std::uint32_t v = cpu_.current_exception();  // VECTACTIVE
-            if (cpu_.is_pending(kExcPendSV))  v |= (1u << 28);
-            if (cpu_.is_pending(kExcSysTick)) v |= (1u << 26);
+            std::uint32_t v = cur().current_exception();  // VECTACTIVE
+            if (cur().is_pending(kExcPendSV))  v |= (1u << 28);
+            if (cur().is_pending(kExcSysTick)) v |= (1u << 26);
             return {v, BusStatus::Ok};
         }
-        case kVTOR:  return {cpu_.vtor(), BusStatus::Ok};
+        case kVTOR:  return {cur().vtor(), BusStatus::Ok};
         case kAIRCR: return {kAircrVectKey, BusStatus::Ok};  // key reads back
-        case kSCR:   return {scr_, BusStatus::Ok};
+        case kSCR:   return {scr_[active_], BusStatus::Ok};
         case kCCR:   return {(1u << 3) | (1u << 9), BusStatus::Ok};  // UNALIGN_TRP|STKALIGN
         case kSHPR2: return {read_shpr2(), BusStatus::Ok};
         case kSHPR3: return {read_shpr3(), BusStatus::Ok};
@@ -104,59 +104,59 @@ BusResult<std::uint32_t> Scs::bus_read(std::uint32_t offset, BusWidth) {
 BusStatus Scs::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     switch (offset) {
         case kSYST_CSR:
-            syst_csr_ = (syst_csr_ & kCountFlag) | (value & 0x7u);  // keep COUNTFLAG
+            syst_csr_[active_] = (syst_csr_[active_] & kCountFlag) | (value & 0x7u);  // keep COUNTFLAG
             return BusStatus::Ok;
         case kSYST_RVR:
-            syst_rvr_ = value & kSysTick24;
+            syst_rvr_[active_] = value & kSysTick24;
             return BusStatus::Ok;
         case kSYST_CVR:
-            syst_cvr_ = 0;              // any write clears the counter ...
-            syst_csr_ &= ~kCountFlag;   // ... and COUNTFLAG
+            syst_cvr_[active_] = 0;              // any write clears the counter ...
+            syst_csr_[active_] &= ~kCountFlag;   // ... and COUNTFLAG
             return BusStatus::Ok;
 
         case kNVIC_ISER:
             for (unsigned i = 0; i < 32; ++i)
-                if (value & (1u << i)) cpu_.set_irq_enabled(i, true);
+                if (value & (1u << i)) cur().set_irq_enabled(i, true);
             return BusStatus::Ok;
         case kNVIC_ICER:
             for (unsigned i = 0; i < 32; ++i)
-                if (value & (1u << i)) cpu_.set_irq_enabled(i, false);
+                if (value & (1u << i)) cur().set_irq_enabled(i, false);
             return BusStatus::Ok;
         case kNVIC_ISPR:
             for (unsigned i = 0; i < static_cast<unsigned>(kNumRp2040Irqs); ++i)
-                if (value & (1u << i)) cpu_.pend_exception(kExcExternal0 + i);
+                if (value & (1u << i)) cur().pend_exception(kExcExternal0 + i);
             return BusStatus::Ok;
         case kNVIC_ICPR:
             for (unsigned i = 0; i < static_cast<unsigned>(kNumRp2040Irqs); ++i)
-                if (value & (1u << i)) cpu_.clear_pending(kExcExternal0 + i);
+                if (value & (1u << i)) cur().clear_pending(kExcExternal0 + i);
             return BusStatus::Ok;
 
         case kICSR:
-            if (value & (1u << 28)) cpu_.pend_exception(kExcPendSV);
-            if (value & (1u << 27)) cpu_.clear_pending(kExcPendSV);
-            if (value & (1u << 26)) cpu_.pend_exception(kExcSysTick);
-            if (value & (1u << 25)) cpu_.clear_pending(kExcSysTick);
+            if (value & (1u << 28)) cur().pend_exception(kExcPendSV);
+            if (value & (1u << 27)) cur().clear_pending(kExcPendSV);
+            if (value & (1u << 26)) cur().pend_exception(kExcSysTick);
+            if (value & (1u << 25)) cur().clear_pending(kExcSysTick);
             return BusStatus::Ok;
         case kVTOR:
-            cpu_.set_vtor(value);
+            cur().set_vtor(value);
             return BusStatus::Ok;
         case kAIRCR:
             if ((value & 0xFFFF0000u) != kAircrVectKey) return BusStatus::Ok;  // bad key
             if ((value & (1u << 2)) != 0) {                // SYSRESETREQ
                 if (system_reset_cb_) system_reset_cb_();
-                else cpu_.reset();
+                else cur().reset();
             }
             return BusStatus::Ok;
         case kSCR:
-            scr_ = value & 0x16u;
-            cpu_.set_sleep_on_exit((scr_ & (1u << 1)) != 0);  // SLEEPONEXIT
+            scr_[active_] = value & 0x16u;
+            cur().set_sleep_on_exit((scr_[active_] & (1u << 1)) != 0);  // SLEEPONEXIT
             return BusStatus::Ok;
         case kSHPR2:
-            cpu_.set_exception_priority(kExcSVCall, static_cast<std::uint8_t>(value >> 24));
+            cur().set_exception_priority(kExcSVCall, static_cast<std::uint8_t>(value >> 24));
             return BusStatus::Ok;
         case kSHPR3:
-            cpu_.set_exception_priority(kExcSysTick, static_cast<std::uint8_t>(value >> 24));
-            cpu_.set_exception_priority(kExcPendSV, static_cast<std::uint8_t>((value >> 16) & 0xFFu));
+            cur().set_exception_priority(kExcSysTick, static_cast<std::uint8_t>(value >> 24));
+            cur().set_exception_priority(kExcPendSV, static_cast<std::uint8_t>((value >> 16) & 0xFFu));
             return BusStatus::Ok;
 
         case kCPUID: case kCCR: case kSHCSR:
@@ -171,19 +171,19 @@ BusStatus Scs::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
 }
 
 void Scs::on_cycles(std::uint64_t cycles) {
-    if ((syst_csr_ & 1u) == 0) return;  // SysTick disabled
+    if ((syst_csr_[active_] & 1u) == 0) return;  // SysTick disabled
 
-    const std::uint32_t reload = syst_rvr_ & kSysTick24;
+    const std::uint32_t reload = syst_rvr_[active_] & kSysTick24;
     for (std::uint64_t i = 0; i < cycles; ++i) {
-        if ((syst_cvr_ & kSysTick24) == 0) {
-            syst_cvr_ = reload;  // reload happens the cycle after reaching 0
+        if ((syst_cvr_[active_] & kSysTick24) == 0) {
+            syst_cvr_[active_] = reload;  // reload happens the cycle after reaching 0
             continue;
         }
-        syst_cvr_ = (syst_cvr_ - 1) & kSysTick24;
-        if ((syst_cvr_ & kSysTick24) == 0) {
-            syst_csr_ |= kCountFlag;
-            if (syst_csr_ & (1u << 1)) {  // TICKINT
-                cpu_.pend_exception(kExcSysTick);
+        syst_cvr_[active_] = (syst_cvr_[active_] - 1) & kSysTick24;
+        if ((syst_cvr_[active_] & kSysTick24) == 0) {
+            syst_csr_[active_] |= kCountFlag;
+            if (syst_csr_[active_] & (1u << 1)) {  // TICKINT
+                cur().pend_exception(kExcSysTick);
             }
         }
     }

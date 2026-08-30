@@ -57,8 +57,8 @@ void Pwm::advance_slice(unsigned s) {
 
 void Pwm::refresh_irq() {
     const std::uint32_t mis = (intr_ | intf_) & inte_;
-    if (mis != 0) cpu_.pend_exception(kIrqWrap);
-    else          cpu_.clear_pending(kIrqWrap);
+    if (mis != 0) nvic_.pend_exception(kIrqWrap);
+    else          nvic_.clear_pending(kIrqWrap);
 }
 
 void Pwm::on_cycles(std::uint64_t sys_cycles) {

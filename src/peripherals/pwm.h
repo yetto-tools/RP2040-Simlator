@@ -14,6 +14,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 #include "peripherals/gpio.h"
 
@@ -26,7 +27,7 @@ public:
     static constexpr unsigned kNumSlices = 8;
     static constexpr unsigned kIrqWrap = kExcExternal0 + 4;  // PWM_IRQ_WRAP == IRQ4
 
-    Pwm(Cpu& cpu, Gpio& gpio) : cpu_(cpu), gpio_(gpio) {}
+    Pwm(Cpu& cpu, Gpio& gpio) : nvic_(cpu), gpio_(gpio) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
@@ -36,6 +37,9 @@ public:
     void on_cycles(std::uint64_t sys_cycles);
 
     std::uint16_t counter(unsigned slice) const { return slice_[slice].ctr; }
+
+    // Wire the second Cortex-M0+ core into this peripheral's IRQ.
+    void connect_core1(Cpu* c) { nvic_.connect(c); }
 
 private:
     struct Slice {
@@ -53,7 +57,7 @@ private:
     void update_outputs(unsigned s);
     void refresh_irq();
 
-    Cpu& cpu_;
+    InterruptController nvic_;
     Gpio& gpio_;
     std::array<Slice, kNumSlices> slice_{};
     std::uint32_t enable_ = 0;   // global EN register, one bit per slice

@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "peripherals/sio.h"
+#include "peripherals/timer.h"
 #include "simulator.h"
 
 using namespace rp2040;
@@ -64,6 +65,47 @@ TEST_CASE("launching core 1 through the mailbox starts it executing") {
     for (int i = 0; i < 10; ++i) sim.step();
     CHECK(sim.regs(1).get(0) == 0x42);      // core 1 ran its program
     CHECK(sim.regs(0).pc() == c0);          // core 0 still spinning
+}
+
+TEST_CASE("a peripheral IRQ is delivered to core 1 (per-core NVIC)") {
+    Simulator sim;
+    Memory& mem = sim.memory();
+    constexpr std::uint32_t c0 = 0x20000000u;
+    constexpr std::uint32_t c1_vt = 0x20010000u;
+    constexpr std::uint32_t c1_code = 0x20010100u;
+    constexpr std::uint32_t c1_handler = 0x20010200u;
+
+    const std::array<std::uint16_t, 1> prog0{0xE7FE};                 // core 0: b .
+    const std::array<std::uint16_t, 1> prog1{0xE7FE};                 // core 1: b .
+    const std::array<std::uint16_t, 1> handler{0xE7FE};               // handler: b . (stay put)
+    REQUIRE(mem.load(c0, prog0.data(), 2));
+    REQUIRE(mem.load(c1_code, prog1.data(), 2));
+    REQUIRE(mem.load(c1_handler, handler.data(), 2));
+    REQUIRE(mem.write_word(c1_vt + 0u, 0x20040000u) == BusStatus::Ok);
+    REQUIRE(mem.write_word(c1_vt + 4u, c1_code | 1u) == BusStatus::Ok);
+    REQUIRE(mem.write_word(c1_vt + 4u * Timer::kIrq0, c1_handler | 1u) == BusStatus::Ok);
+    sim.regs(0).set_pc(c0);
+
+    for (std::uint32_t w : {0u, 0u, 1u, c1_vt, 0x20040000u, (c1_code | 1u)}) {
+        REQUIRE(mem.write_word(kSio + 0x054u, w) == BusStatus::Ok);
+    }
+    REQUIRE(sim.core1_running());
+
+    // core 1 enables TIMER_IRQ_0; core 0 does not.
+    sim.cpu(1).set_irq_enabled(0, true);
+    sim.cpu(1).set_exception_priority(Timer::kIrq0, 0);
+
+    // Arm alarm 0 for "now" so it fires on the next microsecond tick.
+    REQUIRE(mem.write_word(Timer::kBase + 0x38u, 0x1u) == BusStatus::Ok);   // INTE alarm 0
+    REQUIRE(mem.write_word(Timer::kBase + 0x10u, 0u) == BusStatus::Ok);     // ALARM0 = 0
+
+    for (int i = 0; i < 300; ++i) sim.step();
+
+    CHECK(sim.regs(1).pc() >= c1_handler);        // core 1 vectored to the handler
+    CHECK(sim.regs(1).pc() < c1_handler + 8u);
+    CHECK(sim.cpu(1).current_exception() == Timer::kIrq0);
+    CHECK(sim.regs(0).pc() == c0);                // core 0 never took it
+    CHECK(sim.cpu(0).current_exception() == 0u);
 }
 
 TEST_CASE("per-core CPUID reflects the active core") {

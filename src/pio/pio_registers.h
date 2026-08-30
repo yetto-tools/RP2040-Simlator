@@ -13,6 +13,7 @@
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
+#include "core/interrupt_controller.h"
 #include "core/memory.h"
 #include "pio/pio_block.h"
 
@@ -34,7 +35,8 @@ public:
     // Route the block's interrupt state onto the NVIC. `cpu` is borrowed;
     // `irq0` is the exception number for this instance's IRQ_0 line (IRQ_1 is
     // irq0 + 1). Call poll_interrupts() after advancing the block.
-    void connect_nvic(Cpu* cpu, unsigned irq0) { cpu_ = cpu; nvic_irq0_ = irq0; }
+    void connect_nvic(Cpu* cpu, unsigned irq0) { nvic_.connect(cpu); nvic_irq0_ = irq0; }
+    void connect_core1(Cpu* core1) { nvic_.connect(core1); }
     void poll_interrupts();
 
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
@@ -52,7 +54,7 @@ private:
 
     PioBlock& block_;
     std::uint32_t base_;
-    Cpu* cpu_ = nullptr;
+    InterruptController nvic_;
     unsigned nvic_irq0_ = 0;
 
     std::uint32_t ctrl_ = 0;
