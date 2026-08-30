@@ -47,6 +47,9 @@ void Cpu::reset() {
     regs_.reset();
     pending_ = 0;
     irq_enabled_ = 0;
+    asleep_ = false;
+    sleep_is_wfe_ = false;
+    event_ = false;
     const BusResult<std::uint32_t> sp = mem_.read_word(vtor_);
     const BusResult<std::uint32_t> pc = mem_.read_word(vtor_ + 4u);
     if (sp.ok()) regs_.set_msp(sp.value);
@@ -62,6 +65,17 @@ ExecStatus Cpu::step() {
     if (const int e = highest_pending_exception(); e != 0) {
         clear_pending(static_cast<unsigned>(e));
         return take_exception(static_cast<unsigned>(e), regs_.pc());
+    }
+
+    // A WFI/WFE sleep: nothing woke us (no eligible exception above, no event),
+    // so idle for one cycle so peripheral time keeps advancing.
+    if (asleep_) {
+        if (sleep_is_wfe_ && event_) { event_ = false; asleep_ = false; }
+        else {
+            cycles_ += 1;
+            if (scs_ != nullptr) scs_->on_cycles(1);
+            return ExecStatus::WaitingForInterrupt;
+        }
     }
 
     const std::uint32_t pc = regs_.pc();
@@ -167,6 +181,10 @@ ExecStatus Cpu::take_exception(unsigned exc, std::uint32_t return_address) {
         return ExecStatus::Lockup;
     }
 
+    // Exception entry is a wake event (ARMv6-M B1.5.18); a WFI/WFE sleep ends.
+    signal_event();
+    asleep_ = false;
+
     const CpuMode prev_mode = regs_.mode();
     const bool prev_spsel = regs_.control_spsel();
     const std::uint32_t sp0 = regs_.sp();
@@ -240,6 +258,11 @@ ExecStatus Cpu::exception_return(std::uint32_t exc_return) {
     return ExecStatus::Ok;
 }
 
+void Cpu::signal_event() {
+    event_ = true;
+    if (asleep_ && sleep_is_wfe_) asleep_ = false;
+}
+
 ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {
     switch (d.op) {
         case Mnemonic::UNDEFINED:
@@ -248,15 +271,29 @@ ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {
             return ExecStatus::Undefined;
 
         case Mnemonic::NOP:
-        case Mnemonic::SEV:
         case Mnemonic::YIELD:
         case Mnemonic::DSB:
         case Mnemonic::DMB:
         case Mnemonic::ISB:
             return ExecStatus::Ok;  // barriers are no-ops in a functional model
 
+        case Mnemonic::SEV:
+            signal_event();                       // this core
+            if (sev_target_ != nullptr) sev_target_->signal_event();
+            return ExecStatus::Ok;
+
         case Mnemonic::WFI:
+            // Wake source: any enabled pending interrupt (even if PRIMASK-masked).
+            if (pending_ != 0) return ExecStatus::Ok;
+            asleep_ = true;
+            sleep_is_wfe_ = false;
+            return ExecStatus::WaitingForInterrupt;
+
         case Mnemonic::WFE:
+            if (event_) { event_ = false; return ExecStatus::Ok; }
+            if (highest_pending_exception() != 0) return ExecStatus::Ok;
+            asleep_ = true;
+            sleep_is_wfe_ = true;
             return ExecStatus::WaitingForInterrupt;
 
         case Mnemonic::BKPT:

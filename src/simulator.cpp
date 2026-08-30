@@ -43,6 +43,9 @@ Simulator::Simulator() {
     pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);
     pio1_regs_.connect_nvic(&cpu_, PioRegisters::kPio1Irq0);
 
+    cpu_.set_sev_target(&cpu1_);
+    cpu1_.set_sev_target(&cpu_);
+
     sio_.connect_cores(&cpu_, &cpu1_);
     sio_.on_core1_launch([this](std::uint32_t vtor, std::uint32_t sp, std::uint32_t entry) {
         regs1_.reset();
@@ -116,6 +119,9 @@ Simulator::RunResult Simulator::run(std::uint64_t max_instructions) {
     for (; r.instructions < max_instructions; ++r.instructions) {
         const std::uint32_t pc = regs_.pc();
         r.status = step();
+        // A WFI/WFE sleep keeps time advancing so a peripheral interrupt can
+        // still wake the core; it is not a stop condition.
+        if (r.status == ExecStatus::WaitingForInterrupt) continue;
         if (r.status == ExecStatus::Ok || r.status == ExecStatus::ExceptionTaken) {
             if (r.status == ExecStatus::Ok && regs_.pc() == pc) {
                 r.self_branch = true;

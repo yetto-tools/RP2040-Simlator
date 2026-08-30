@@ -91,6 +91,15 @@ public:
     // is what the handler's frame will resume to.
     ExecStatus take_exception(unsigned exc, std::uint32_t return_address);
 
+    // --- Sleep / event (WFI, WFE, SEV) ---------------------------------
+    // True while the core is in a WFI/WFE sleep waiting for a wake event.
+    bool asleep() const { return asleep_; }
+    // Raise this core's event register (SEV on the other core, an exception
+    // entry, or an enabled interrupt becoming pending). Wakes a WFE sleep.
+    void signal_event();
+    // The sibling core to send SEV events to (dual-core). Borrowed.
+    void set_sev_target(Cpu* other) { sev_target_ = other; }
+
 private:
     // R15 reads yield instr_pc + 4 (ARMv6-M); callers needing Align(PC,4)
     // mask the low two bits themselves.
@@ -115,6 +124,10 @@ private:
     std::array<std::uint8_t, kExceptionTableEntries> priority_{};
     std::uint32_t svc_imm_ = 0;
     std::uint32_t bkpt_imm_ = 0;
+    bool asleep_ = false;       // in a WFI/WFE sleep
+    bool sleep_is_wfe_ = false; // sleep entered by WFE (also wakes on event)
+    bool event_ = false;        // WFE event register
+    Cpu* sev_target_ = nullptr;
 };
 
 }  // namespace rp2040

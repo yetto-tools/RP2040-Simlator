@@ -43,6 +43,38 @@ ExecStatus run_one(Cpu& cpu, RegisterFile& regs, std::uint16_t word, std::uint32
 
 }  // namespace
 
+TEST_CASE_FIXTURE(CpuFix, "WFI sleeps until an interrupt pends, then resumes past it") {
+    // wfi ; movs r0,#1 ; b .
+    program({0xBF30, 0x2001, 0xE7FE});
+    regs.set_sp(kBase + 0x800);
+    cpu.set_irq_enabled(0, true);
+
+    CHECK(step() == ExecStatus::WaitingForInterrupt);   // executes WFI, now asleep
+    CHECK(cpu.asleep());
+    CHECK(step() == ExecStatus::WaitingForInterrupt);   // still idle
+    CHECK(regs.get(0) == 0u);
+
+    cpu.pend_exception(kExcExternal0);                  // IRQ0 arrives
+    const ExecStatus s = step();
+    CHECK(s == ExecStatus::ExceptionTaken);
+    CHECK_FALSE(cpu.asleep());
+}
+
+TEST_CASE_FIXTURE(CpuFix, "WFE consumes a pending event instead of sleeping; SEV wakes it") {
+    program({0xBF20, 0xBF20, 0x2001, 0xE7FE});  // wfe ; wfe ; movs r0,#1 ; b .
+
+    cpu.signal_event();
+    CHECK(step() == ExecStatus::Ok);            // first WFE eats the event
+    CHECK_FALSE(cpu.asleep());
+
+    CHECK(step() == ExecStatus::WaitingForInterrupt);  // second WFE sleeps
+    CHECK(cpu.asleep());
+    cpu.signal_event();                         // an SEV from elsewhere
+    CHECK_FALSE(cpu.asleep());
+    CHECK(step() == ExecStatus::Ok);            // resumes: movs r0,#1
+    CHECK(regs.get(0) == 1u);
+}
+
 TEST_CASE_FIXTURE(CpuFix, "MOVS #imm sets N/Z, leaves C/V") {
     regs.set_c(true);
     regs.set_v(true);

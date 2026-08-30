@@ -140,8 +140,13 @@ Week 12:    PHASE 9 - Documentation & Release
       SHPR2/SHPR3, SysTick CSR/RVR/CVR with a down-counter advanced per cycle
       by `step()`, COUNTFLAG, TICKINT -> kExcSysTick
 - [x] Memory decoder now routes the PPB region to peripherals
-- [ ] SYSRESETREQ handling; WFI/WFE sleep + SLEEPONEXIT
-- **Tests**: test_exceptions (87), test_scs (81)
+- [x] WFI/WFE sleep + SEV event model: `Cpu` has an event register and an
+      `asleep_` state; WFI sleeps until any pending interrupt, WFE until an
+      event, SEV sets the event on both cores, exception entry is a wake event.
+      `Simulator::run` keeps time advancing through a sleep so a peripheral IRQ
+      can wake it (`ExecStatus::WaitingForInterrupt` is not a stop)
+- [ ] SYSRESETREQ handling; SLEEPONEXIT / SLEEPDEEP
+- **Tests**: test_exceptions (87), test_scs (81), test_cpu_exec WFI/WFE/SEV
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3
@@ -156,9 +161,10 @@ Week 12:    PHASE 9 - Documentation & Release
       (IRQ15/16), 32 hardware spinlocks
 - [x] Core-1 launch: the `0,0,1,vtor,sp,entry` mailbox sequence sets core1's
       VTOR/SP/PC and starts it (bootrom echo emulated)
+- [x] Cross-core SEV/WFE event signalling (SEV on one core wakes a WFE sleep
+      on the other; see P1.4)
 - [ ] Per-core NVIC / SysTick (today only core0 has an MMIO NVIC and receives
-      peripheral IRQs); core-0/core-1 SEV/WFE event signalling; exact
-      interleave timing
+      peripheral IRQs); exact interleave timing
 - **Tests**: `tests/unit/test_multicore.cpp` (4 cases)
 - **Design**: RP2040 datasheet 2.3, 2.4
 
