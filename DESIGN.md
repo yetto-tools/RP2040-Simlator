@@ -148,7 +148,7 @@ struct StateMachine {
 **Decision**: **Hybrid: switch/case for main opcode, helper methods for operands**
 
 **Rationale**:
-- ARM Thumb-2: 177+ instructions  huge switch statement
+- ARMv6-M Thumb (Cortex-M0+): ~56 base instructions  still a large dispatch
 - Group by opcode patterns  smaller, faster
 - Each group has dedicated method
 - Easier to document and validate

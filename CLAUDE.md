@@ -62,7 +62,7 @@ When implementing a feature, ask:
 
 ```
 Every clock cycle:
-1. CPU executes ONE instruction (ARM Thumb-2)
+1. Each CPU core (2x Cortex-M0+, ARMv6-M) executes ONE instruction (Thumb)
 2. PIO Block 0: Each of 4 SMs executes ONE instruction (PIO ISA)
 3. PIO Block 1: Each of 4 SMs executes ONE instruction (PIO ISA)
 4. Peripherals update (GPIO, UART, Timer, ADC)
@@ -227,13 +227,17 @@ When asked to implement something, I should confirm:
 
 ## Key Concepts You Must Understand
 
-### 1. ARM Cortex-M0+ CPU
-- 32-bit RISC processor
-- Thumb-2 instruction set (16-bit and 32-bit instructions)
-- 3-stage pipeline: Fetch  Decode  Execute
-- 16 registers (R0-R15, where R13=SP, R14=LR, R15=PC)
-- Condition code register (N, Z, C, V flags)
-- Exception handling with vector table
+### 1. ARM Cortex-M0+ CPU (2x on the RP2040)
+- 32-bit RISC processor, **ARMv6-M** architecture (NOT Thumb-2 / ARMv7-M)
+- ISA: all 16-bit Thumb encodings + 6 32-bit ones (BL, MSR, MRS, DSB, DMB, ISB)
+- The 16-bit data ops are the flag-setting forms: MOVS, ADDS, SUBS, ANDS, LSLS,
+  MULS, ... (no IT block, so no non-S 16-bit forms except high-reg MOV/ADD, ADR, ADD/SUB SP)
+- NOT present: IT, CBZ/CBNZ, LDRD/STRD, LDM.W/STM.W, UMULL/SMULL, SDIV/UDIV,
+  MOVW/MOVT, the Q and GE flags, 32-bit data processing
+- 3-stage pipeline: Fetch  Decode  Execute; PC reads as (instr addr + 4)
+- 16 registers (R0-R15; R13=SP banked MSP/PSP, R14=LR, R15=PC)
+- APSR: N, Z, C, V only. CONTROL (nPRIV, SPSEL), PRIMASK. VTOR present on M0+.
+- Exception handling with vector table (NVIC); 26 external IRQ on RP2040, 2 priority bits
 
 ### 2. PIO (Programmable I/O)
 - Co-processor with 8 state machines (4 per block)
@@ -302,7 +306,7 @@ When I generate code, you should check:
 ## How to Communicate with Me (Claude)
 
 ### Good Requests
- "Implement the ARMThumb-2 ADD instruction (datasheet p. 125). Should this handle carry flag? Should it trigger auto-increment?"
+ "Implement the ARMv6-M ADDS (register) instruction (ARM ARM A6.7.4). Which flags does it write - N,Z,C,V all?"
  "Review this PIO state machine implementation. Does it handle the FIFO blocking correctly?"
  "What tests should we write for SPI mode 0-3 mode switching?"
 

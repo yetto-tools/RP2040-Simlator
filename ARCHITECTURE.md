@@ -70,7 +70,7 @@ which stores the raw PC.
 ```
 Stage 1 (Fetch):
 ├─ Read instruction from memory at PC
-├─ Handle 16/32-bit decoding (Thumb-2 variable-length)
+├─ Handle 16/32-bit decoding (Thumb variable-length; ARMv6-M has six 32-bit ops)
 └─ Increment PC (handling Branch/Trap/Exception cases)
 
 Stage 2 (Decode):
@@ -104,8 +104,16 @@ Stage 3 (Execute):
 >
 > The decoder is a pure function `(halfword[s]) -> DecodedInstr`; the execute
 > stage that applies effects is tracked separately (P1.2 tail / P1.1 pipeline).
+>
+> **Flag-setting convention (ARMv6-M has no `IT`):** the 16-bit data-processing
+> encodings *are* the flag-setting forms - `MOVS`, `ADDS`, `SUBS`, `ANDS`,
+> `LSLS`, `MULS`, ... all write `APSR.{N,Z,C,V}`. The only non-flag-setting
+> data ops are the high-register `MOV`/`ADD` (encoding T1/T2 in the "special
+> data" group), `ADR`, and `ADD`/`SUB SP,SP,#imm`. `CMP`/`CMN`/`TST` always
+> update flags. `DecodedInstr.setflags` carries this per instruction.
 
-**Total instructions**: 177 (baseline Thumb-2)
+**Total instructions**: ~56 base (ARMv6-M) - every 16-bit Thumb encoding plus
+`BL`, `MSR`, `MRS`, `DSB`, `DMB`, `ISB`
 
 #### Load/Store Instructions (15 types)
 ```
@@ -1098,7 +1106,7 @@ $ python3 tools/compare_traces.py simulated.vcd hardware.vcd
 
 | Component | Level | Notes |
 |-----------|-------|-------|
-| ARM Cortex-M0+ | 5 (Exact) | All 177 Thumb-2 instructions |
+| ARM Cortex-M0+ (2x, ARMv6-M) | 5 (Exact) | Full ARMv6-M Thumb ISA; Cortex-M0+ instruction timings |
 | PIO State Machines | 5 (Exact) | Cycle-accurate parallel execution |
 | GPIO | 4 (Precise) | Timing ±10ns, edge detect exact |
 | UART | 4 (Precise) | Bit-level protocol simulation |

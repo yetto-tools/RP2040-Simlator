@@ -692,7 +692,7 @@ Week 12:    PHASE 9 - Documentation & Release
 ---
 
 ### Sprint 2 (Week 2): More Instructions + Interrupts
-**Goal**: Complete ARM Thumb-2 ISA, interrupt handling
+**Goal**: Complete ARMv6-M Thumb ISA (execute stage), interrupt handling
 
 **Tasks**:
 - [ ] P1.2.3: Branch instructions
