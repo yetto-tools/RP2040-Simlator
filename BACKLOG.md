@@ -90,13 +90,18 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] STM/LDM (writeback rules); Bcc/SVC/UDF; B (T2)
 - [x] 32-bit: BL (offset reconstruction), MRS, MSR, DSB/DMB/ISB
 - [x] Rejects ARMv7-M-only encodings (IT, CBZ/CBNZ, LDM.W) as UNDEFINED
-- [ ] Execute stage (decode -> effects on RegisterFile/Memory) -> next
-- **Tests**: `tests/unit/test_thumb_decode.cpp` (13 cases, 219 assertions)
+- [x] ALU primitives: `add_with_carry`, `shift_c` (LSL/LSR/ASR/ROR/RRX)
+- [x] Execute stage - computational core: data processing, shifts, moves,
+      compares, MUL, high-reg ADD/MOV/CMP, ADR/ADD-SUB SP, SXT/UXT, REV*
+- [x] Execute stage - branches: B, Bcc, BL, BX, BLX; MRS/MSR/CPS; BKPT/SVC
+- [x] `Cpu::step()` fetch-decode-execute loop (runs real loops)
+- [ ] Execute stage - memory: LDR/STR/LDRB/LDRH/... , PUSH/POP, LDM/STM -> next
+- **Tests**: test_thumb_decode (219 asserts), test_alu (45), test_cpu_exec (86)
 - **Effort**: 60 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P1.1
-- **Design**: ARCHITECTURE.md 1.4; ARMv6-M ARM chapter A5
-- **Files**: `include/thumb_isa.h`, `src/core/thumb_decode.cpp`
+- **Design**: ARCHITECTURE.md 1.4; ARMv6-M ARM chapters A5, A6, A2.2
+- **Files**: `include/thumb_isa.h`, `src/core/{thumb_decode,alu,cpu}.{h,cpp}`
 
 #### P1.3: Memory Subsystem  [IN PROGRESS]
 - [x] ROM (16 KB, read-only) - direct stores fault as WriteToReadOnly
