@@ -57,6 +57,7 @@ add_library(rp2040_core STATIC
     src/peripherals/iobank0.cpp
     src/peripherals/timer.cpp
     src/peripherals/uart.cpp
+    src/peripherals/adc.cpp
     src/peripherals/dma.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)

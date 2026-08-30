@@ -421,20 +421,19 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `src/peripherals/dma.{h,cpp}`
 - **Design**: RP2040 datasheet 2.5
 
-#### P5.1: ADC Controller
-- [ ] 4 GPIO channels (GPIO26-GPIO29)
-- [ ] Temperature sensor (VBE)
-- [ ] 12-bit conversion
-- [ ] Configurable sample rate
-- [ ] Free-running mode
-- [ ] Single-shot mode
-- [ ] Channel selection
-- [ ] Round-robin mode
-- [ ] Conversion timing (~2 µs per sample)
-- **Tests**: 15+ ADC tests
-- **Effort**: 15 hours
+#### P5.1: ADC Controller  [IN PROGRESS]
+- [x] `Adc` BusPeripheral (`src/peripherals/adc.{h,cpp}`) @ 0x4004C000
+- [x] 5 inputs (GPIO26-29 + temp sensor, gated by TS_EN); 12-bit RESULT;
+      test bench sets raw codes via `set_input()`
+- [x] START_ONCE (immediate), START_MANY free-running paced by the 48 MHz
+      ADC clock from `on_cycles()` (96 + DIV_INT clocks/sample), RROBIN
+- [x] 4-entry sample FIFO: FCS.EN/SHIFT, LEVEL, EMPTY/FULL, OVER/UNDER (w1c)
+- [x] INTR / INTE / INTF / INTS with THRESH -> ADC_IRQ_FIFO (IRQ22)
+- [ ] Bit-accurate SAR timing detail; DMA DREQ line; input from real GPIO
+      pad voltage
+- **Tests**: `tests/unit/test_adc.cpp` (8 cases)
 - **Priority**: MEDIUM
-- **Dependencies**: P1.3, P1.4
+- **Design**: RP2040 datasheet 4.9
 
 #### P5.2: Advanced Interrupt Handling
 - [ ] Interrupt priority (0-3)

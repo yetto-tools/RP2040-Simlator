@@ -8,6 +8,7 @@ Simulator::Simulator() {
     iobank_.attach(mem_);
     timer_.attach(mem_);
     dma_.attach(mem_);
+    adc_.attach(mem_);
     uart0_.attach(mem_);
     uart1_.attach(mem_);
     pio0_regs_.attach(mem_);
@@ -41,6 +42,7 @@ ExecStatus Simulator::step() {
         pio1_.tick();
     }
     timer_.on_cycles(spent);
+    adc_.on_cycles(spent);
     pio0_regs_.poll_interrupts();
     pio1_regs_.poll_interrupts();
     return status;
