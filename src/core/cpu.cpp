@@ -42,15 +42,34 @@ void Cpu::write_reg(unsigned n, std::uint32_t value) {
     regs_.set(n, value);
 }
 
+void Cpu::reset() {
+    regs_.reset();
+    pending_ = 0;
+    const BusResult<std::uint32_t> sp = mem_.read_word(vtor_);
+    const BusResult<std::uint32_t> pc = mem_.read_word(vtor_ + 4u);
+    if (sp.ok()) regs_.set_msp(sp.value);
+    if (pc.ok()) {
+        regs_.set_thumb((pc.value & 1u) != 0);
+        regs_.set_pc(pc.value & ~std::uint32_t{1});
+    }
+    cycles_ = 0;
+}
+
 ExecStatus Cpu::step() {
+    // Asynchronous exceptions are checked between instructions.
+    if (const int e = highest_pending_exception(); e != 0) {
+        clear_pending(static_cast<unsigned>(e));
+        return take_exception(static_cast<unsigned>(e), regs_.pc());
+    }
+
     const std::uint32_t pc = regs_.pc();
     const BusResult<std::uint16_t> hw1 = mem_.read_half(pc);
-    if (!hw1.ok()) return ExecStatus::MemFault;
+    if (!hw1.ok()) return take_exception(kExcHardFault, pc);
 
     DecodedInstr d;
     if (is_32bit_thumb(hw1.value)) {
         const BusResult<std::uint16_t> hw2 = mem_.read_half(pc + 2u);
-        if (!hw2.ok()) return ExecStatus::MemFault;
+        if (!hw2.ok()) return take_exception(kExcHardFault, pc);
         d = decode_thumb32(hw1.value, hw2.value);
     } else {
         d = decode_thumb16(hw1.value);
@@ -71,7 +90,137 @@ ExecStatus Cpu::step() {
     }
     const bool took_branch = regs_.pc() != seq_pc;
     cycles_ += instruction_cycles(d, took_branch, reg_count);
-    return status;
+
+    // Synchronous exceptions raised by the instruction just executed.
+    switch (status) {
+        case ExecStatus::Svc:
+            return take_exception(kExcSVCall, regs_.pc());  // resume after SVC
+        case ExecStatus::Undefined:
+        case ExecStatus::MemFault:
+            return take_exception(kExcHardFault, pc);       // faulting instruction
+        default:
+            return status;
+    }
+}
+
+// --- exception model ---------------------------------------------------
+
+std::uint8_t Cpu::exception_priority(unsigned exc) const {
+    return exc < priority_.size() ? priority_[exc] : 0u;
+}
+
+void Cpu::set_exception_priority(unsigned exc, std::uint8_t raw) {
+    if (exc < priority_.size()) priority_[exc] = raw;
+}
+
+int Cpu::priority_of(unsigned exc) const {
+    switch (exc) {
+        case kExcNMI:       return kPriorityNMI;
+        case kExcHardFault: return kPriorityHardFault;
+        default:            return effective_priority(exception_priority(exc));
+    }
+}
+
+int Cpu::current_execution_priority() const {
+    int prio = 256;  // no exception active
+    const unsigned cur = regs_.exception_number();
+    if (cur != 0) prio = priority_of(cur);
+    if (regs_.primask() && prio > 0) prio = 0;
+    return prio;
+}
+
+int Cpu::highest_pending_exception() const {
+    int best = 0;
+    int best_prio = current_execution_priority();
+    for (unsigned e = 2; e <= static_cast<unsigned>(kMaxException); ++e) {
+        if ((pending_ & (1ull << e)) == 0) continue;
+        const int p = priority_of(e);
+        if (regs_.primask() && p >= 0) continue;  // PRIMASK masks p >= 0
+        if (p < best_prio) {
+            best_prio = p;
+            best = static_cast<int>(e);
+        }
+    }
+    return best;
+}
+
+ExecStatus Cpu::take_exception(unsigned exc, std::uint32_t return_address) {
+    // Fault while already at HardFault/NMI priority -> lockup.
+    if (exc == kExcHardFault && current_execution_priority() <= kPriorityHardFault) {
+        return ExecStatus::Lockup;
+    }
+
+    const CpuMode prev_mode = regs_.mode();
+    const bool prev_spsel = regs_.control_spsel();
+    const std::uint32_t sp0 = regs_.sp();
+
+    const std::uint32_t frameptr = (sp0 - kStackFrameBytes) & ~std::uint32_t{7};
+    const bool realigned = (sp0 & 4u) != 0;
+
+    std::uint32_t xpsr = regs_.xpsr();
+    xpsr = realigned ? (xpsr | kXpsrStackAlign) : (xpsr & ~kXpsrStackAlign);
+
+    const std::uint32_t frame[kStackFrameWords] = {
+        regs_.get(0), regs_.get(1), regs_.get(2), regs_.get(3),
+        regs_.get(12), regs_.get(14), return_address, xpsr,
+    };
+    for (unsigned i = 0; i < kStackFrameWords; ++i) {
+        if (mem_.write_word(frameptr + 4u * i, frame[i]) != BusStatus::Ok) {
+            return ExecStatus::Lockup;  // stacking error
+        }
+    }
+    regs_.set_sp(frameptr);  // still in the pre-exception mode -> right SP bank
+
+    std::uint32_t exc_return;
+    if (prev_mode == CpuMode::Handler)  exc_return = kExcReturnHandlerMSP;
+    else if (prev_spsel)                exc_return = kExcReturnThreadPSP;
+    else                               exc_return = kExcReturnThreadMSP;
+    regs_.set_lr(exc_return);
+
+    regs_.set_exception_number(static_cast<std::uint16_t>(exc));  // -> Handler mode
+
+    const BusResult<std::uint32_t> vec = mem_.read_word(vtor_ + 4u * exc);
+    if (!vec.ok()) return ExecStatus::Lockup;
+    regs_.set_thumb((vec.value & 1u) != 0);
+    regs_.set_pc(vec.value & ~std::uint32_t{1});
+    return ExecStatus::ExceptionTaken;
+}
+
+ExecStatus Cpu::exception_return(std::uint32_t exc_return) {
+    bool return_psp = false;
+    switch (exc_return & 0xFu) {
+        case 0x1: return_psp = false; break;  // Handler mode, MSP
+        case 0x9: return_psp = false; break;  // Thread mode, MSP
+        case 0xD: return_psp = true;  break;  // Thread mode, PSP
+        default:  return ExecStatus::Lockup;  // invalid EXC_RETURN
+    }
+
+    const std::uint32_t frameptr = return_psp ? regs_.psp() : regs_.msp();
+    std::uint32_t w[kStackFrameWords];
+    for (unsigned i = 0; i < kStackFrameWords; ++i) {
+        const BusResult<std::uint32_t> r = mem_.read_word(frameptr + 4u * i);
+        if (!r.ok()) return ExecStatus::Lockup;
+        w[i] = r.value;
+    }
+
+    regs_.set(0, w[kFrameR0]);
+    regs_.set(1, w[kFrameR1]);
+    regs_.set(2, w[kFrameR2]);
+    regs_.set(3, w[kFrameR3]);
+    regs_.set(12, w[kFrameR12]);
+    regs_.set_lr(w[kFrameLR]);
+
+    std::uint32_t new_sp = frameptr + kStackFrameBytes;
+    if ((w[kFrameXPSR] & kXpsrStackAlign) != 0) new_sp += 4u;
+    if (return_psp) regs_.set_psp(new_sp); else regs_.set_msp(new_sp);
+
+    regs_.set_xpsr(w[kFrameXPSR]);  // restores N,Z,C,V, T and IPSR (=> mode)
+
+    if (regs_.mode() == CpuMode::Thread) {
+        regs_.set_control(regs_.control_npriv(), return_psp);
+    }
+    regs_.set_pc(w[kFrameReturnAddress] & ~std::uint32_t{1});
+    return ExecStatus::Ok;
 }
 
 ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {
@@ -188,6 +337,9 @@ ExecStatus Cpu::exec_branch(const DecodedInstr& d, std::uint32_t instr_pc) {
 
         case Mnemonic::BX: {
             const std::uint32_t target = read_reg(d.rm, instr_pc);
+            if (regs_.mode() == CpuMode::Handler && is_exc_return(target)) {
+                return exception_return(target);
+            }
             regs_.set_thumb((target & 1u) != 0);
             regs_.set_pc(target & ~std::uint32_t{1});
             return ExecStatus::Ok;
@@ -501,8 +653,13 @@ ExecStatus Cpu::exec_load_store(const DecodedInstr& d, std::uint32_t instr_pc) {
             if ((d.register_list & (1u << 15)) != 0) {  // POP {..., PC}
                 const BusResult<std::uint32_t> r = mem_.read_word(addr);
                 if (!r.ok()) return ExecStatus::MemFault;
+                regs_.set_sp(sp + 4u * n);
+                if (regs_.mode() == CpuMode::Handler && is_exc_return(r.value)) {
+                    return exception_return(r.value);
+                }
                 regs_.set_thumb((r.value & 1u) != 0);      // LoadWritePC == BXWritePC
                 regs_.set_pc(r.value & ~std::uint32_t{1});
+                return ExecStatus::Ok;
             }
             regs_.set_sp(sp + 4u * n);
             return ExecStatus::Ok;

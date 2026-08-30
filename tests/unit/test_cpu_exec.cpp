@@ -259,9 +259,19 @@ TEST_CASE_FIXTURE(CpuFix, "step() runs a real accumulate loop") {
     CHECK(regs.pc() == kBase + 0x0A);
 }
 
-TEST_CASE_FIXTURE(CpuFix, "step() reports UNDEFINED for a v7-M-only encoding") {
-    program({0xBF08});  // ITE EQ -> not in ARMv6-M
-    CHECK(cpu.step() == ExecStatus::Undefined);
+TEST_CASE_FIXTURE(CpuFix, "a v7-M-only encoding takes a HardFault") {
+    // Bare execute() still exposes the raw UNDEFINED signal.
+    CHECK(cpu.execute(decode_thumb16(0xBF08 /* ITE EQ */), kBase) == ExecStatus::Undefined);
+
+    // Through step(), UNDEFINED vectors to HardFault. Put the vector table in
+    // SRAM (ROM is read-only) and point VTOR at it.
+    regs.set_msp(0x20002000u);
+    cpu.set_vtor(0x20001000u);
+    REQUIRE(mem.write_word(0x20001000u + 4u * 3u, 0x20000201u) == BusStatus::Ok);
+    program({0xBF08});
+    CHECK(cpu.step() == ExecStatus::ExceptionTaken);
+    CHECK(regs.pc() == 0x20000200u);
+    CHECK(regs.exception_number() == 3u);   // HardFault
 }
 
 // --- memory-access slice -------------------------------------------------

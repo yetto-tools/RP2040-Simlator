@@ -123,16 +123,25 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARCHITECTURE.md section 2.3-2.4; DESIGN.md Decisions 6 & 13
 - **Files**: `src/core/bus.h`, `src/core/memory.{h,cpp}`, `src/core/bus.cpp`
 
-#### P1.4: Basic Interrupt Controller (NVIC)
-- [ ] Vector table lookup
-- [ ] Exception entry (save stack frame)
-- [ ] ISR dispatch
-- [ ] Return from exception
-- [ ] SysTick integration
-- **Tests**: 10+ interrupt scenarios
+#### P1.4: Exception model + NVIC  [IN PROGRESS]
+- [x] Vector table lookup via VTOR; `Cpu::reset()` = MSP<-vec[0], PC<-vec[1]
+- [x] Exception entry: 8-word frame {R0-R3,R12,LR,ReturnAddr,xPSR}, forced
+      8-byte align + xPSR[9] realign flag, EXC_RETURN in LR, IPSR + Handler mode
+- [x] Exception return: BX LR / POP{PC} with EXC_RETURN payload -> unstack,
+      restore mode/flags/SP (MSP or PSP per EXC_RETURN)
+- [x] Priority model: fixed (Reset/NMI/HardFault) + 2-bit configurable
+      (SVCall/PendSV/SysTick/IRQ); PRIMASK masking; preemption of running handler
+- [x] Synchronous faults: UNDEFINED / bus error -> HardFault (+ lockup on
+      escalation); SVC -> SVCall
+- [x] `pend_exception` / async delivery between instructions
+- [ ] NVIC register block (ISER/ICER/ISPR/ICPR/IPR) as an SCB/NVIC peripheral
+- [ ] SysTick timer (24-bit reload counter) driving kExcSysTick
+- **Tests**: `tests/unit/test_exceptions.cpp` (10 cases, 87 assertions)
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3
+- **Design**: ARMv6-M ARM B1.5; ARCHITECTURE.md section 5
+- **Files**: `include/exceptions.h`, `src/core/cpu.{h,cpp}`
 
 #### P1.5: Clock Management (Basic)  [IN PROGRESS]
 - [x] Per-instruction cycle counter on `Cpu::step()` (`cycle_count()`)
