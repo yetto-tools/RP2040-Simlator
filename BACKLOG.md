@@ -648,16 +648,20 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Dependencies**: P2.1, P7.4
 - **Files**: `src/debuggers/pio_debugger.{h,cpp}`, `src/pio/pio_disasm.{h,cpp}`
 
-#### P7.6: Profiler & Performance Analysis
-- [ ] Cycle counter
-- [ ] Per-instruction timing
-- [ ] Memory access timeline
-- [ ] Interrupt latency measurement
-- [ ] Performance report generation
-- **Tests**: 10+ profiling tests
+#### P7.6: Profiler & Performance Analysis  [DONE - core]
+- [x] Cycle counter + CPI (from the existing Cortex-M0+ timing model)
+- [x] Per-PC hot-spot histogram (exec count + cycles), top-N report
+- [x] Per-vector exception stats: entry count, total + max handler cycles
+      (handler frames tracked on a stack, so nested/preempted handlers are
+      attributed correctly)
+- [x] `Profiler::run()` mirrors `Simulator::run()` stop conditions; stats
+      accumulate across calls until `reset()`
+- [ ] Memory-access timeline (needs a bus hook - deferred)
+- **Tests**: `tests/unit/test_profiler.cpp`
 - **Effort**: 15 hours
 - **Priority**: MEDIUM
 - **Dependencies**: P1.1, P7.4
+- **Files**: `src/debuggers/profiler.{h,cpp}`
 
 ---
 
@@ -978,7 +982,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P7.4.4: Execution control (continue, step)
 - [ ] P7.4.5: Breakpoint management
 - [x] P7.5.1: PIO debugger (per-SM inspection)
-- [ ] P7.6.1: Profiler
+- [x] P7.6.1: Profiler
 
 **Definition of Done**:
 - [ ] Can load real RP2040 binaries

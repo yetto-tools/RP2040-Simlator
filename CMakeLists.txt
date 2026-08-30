@@ -54,6 +54,7 @@ add_library(rp2040_core STATIC
     src/pio/pio_assembler.cpp
     src/pio/pio_disasm.cpp
     src/debuggers/pio_debugger.cpp
+    src/debuggers/profiler.cpp
     src/pio/state_machine.cpp
     src/pio/pio_block.cpp
     src/pio/pio_registers.cpp
