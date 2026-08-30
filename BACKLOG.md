@@ -246,10 +246,12 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] SMx_CLKDIV / EXECCTRL / SHIFTCTRL / PINCTRL decode into SmConfig;
       SMx_ADDR (PC, read-only); FJOIN
 - [x] IRQ register (read / write-1-clear) + IRQ_FORCE
-- [ ] INTR / IRQ0_INTE / IRQ1_INTE routing to the NVIC (state present,
-      not yet pending an IRQ); FDEBUG stall/overflow bits
-- **Tests**: `tests/unit/test_pio_registers.cpp` (10 cases) - incl. a blink
-      program configured entirely through MMIO
+- [x] INTR (RXNEMPTY / TXNFULL / SM-IRQ 0-3) + IRQ0_INTE/INTF/INTS and
+      IRQ1_* routed to NVIC PIO0_IRQ_0/1 (IRQ7/8) and PIO1_IRQ_0/1 (IRQ9/10)
+      via `poll_interrupts()`, called each `Simulator::step()`
+- [ ] FDEBUG stall/overflow/underflow bits
+- **Tests**: `tests/unit/test_pio_registers.cpp` (11 cases) - incl. a blink
+      program configured entirely through MMIO and an SM-IRQ -> NVIC route
 - **Effort**: 20 hours
 - **Dependencies**: P2.1-P2.6
 

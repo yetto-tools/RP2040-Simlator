@@ -11,6 +11,7 @@
 #include <cstdint>
 
 #include "core/bus.h"
+#include "core/cpu.h"
 #include "core/memory.h"
 #include "pio/pio_block.h"
 
@@ -21,10 +22,19 @@ public:
     static constexpr std::uint32_t kPio0Base = 0x50200000u;
     static constexpr std::uint32_t kPio1Base = 0x50300000u;
     static constexpr std::uint32_t kSize = 0x1000u;
+    // PIO0_IRQ_0 = IRQ7, PIO0_IRQ_1 = IRQ8, PIO1_IRQ_0 = IRQ9, PIO1_IRQ_1 = IRQ10.
+    static constexpr unsigned kPio0Irq0 = kExcExternal0 + 7;
+    static constexpr unsigned kPio1Irq0 = kExcExternal0 + 9;
 
     PioRegisters(PioBlock& block, std::uint32_t base) : block_(block), base_(base) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(base_, kSize, this); }
+
+    // Route the block's interrupt state onto the NVIC. `cpu` is borrowed;
+    // `irq0` is the exception number for this instance's IRQ_0 line (IRQ_1 is
+    // irq0 + 1). Call poll_interrupts() after advancing the block.
+    void connect_nvic(Cpu* cpu, unsigned irq0) { cpu_ = cpu; nvic_irq0_ = irq0; }
+    void poll_interrupts();
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
@@ -37,9 +47,12 @@ private:
     void write_sm_pinctrl(unsigned sm, std::uint32_t value);
     std::uint32_t read_fstat() const;
     std::uint32_t read_flevel() const;
+    std::uint32_t compute_intr() const;   // the 12 raw interrupt-source bits
 
     PioBlock& block_;
     std::uint32_t base_;
+    Cpu* cpu_ = nullptr;
+    unsigned nvic_irq0_ = 0;
 
     std::uint32_t ctrl_ = 0;
     std::array<std::uint32_t, PioBlock::kNumSm> clkdiv_{};

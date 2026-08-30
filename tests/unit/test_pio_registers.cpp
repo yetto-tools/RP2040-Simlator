@@ -109,6 +109,34 @@ TEST_CASE_FIXTURE(PioRegFix, "IRQ register: read, write-1-clear, and IRQ_FORCE")
     CHECK(rd(0x030) == (1u << 5));
 }
 
+TEST_CASE("PIO IRQ flag routed to the NVIC through IRQ0_INTE") {
+    Gpio gpio;
+    PioBlock block(gpio, 0);
+    Memory mem;
+    RegisterFile regs;
+    Cpu cpu(regs, mem);
+    PioRegisters pr(block, PioRegisters::kPio0Base);
+    REQUIRE(pr.attach(mem));
+    pr.connect_nvic(&cpu, PioRegisters::kPio0Irq0);
+
+    // Program: irq 0 ; jmp . ; enable SM0.
+    mem.write_word(PioRegisters::kPio0Base + 0x048 + 0, 0xC000);  // irq 0
+    mem.write_word(PioRegisters::kPio0Base + 0x048 + 4, 0x0001);  // jmp 1
+    mem.write_word(PioRegisters::kPio0Base + 0x0C8 + 0x04, (1u << 12));  // wrap 0..1
+    mem.write_word(PioRegisters::kPio0Base + 0x12C, 1u << 8);     // IRQ0_INTE: SM IRQ0 bit
+
+    CHECK_FALSE(cpu.is_pending(PioRegisters::kPio0Irq0));
+    mem.write_word(PioRegisters::kPio0Base + 0x000, 1u);          // enable SM0
+    block.tick();                                                // SM raises irq 0
+    pr.poll_interrupts();
+    CHECK((block.irq() & 1u) != 0);
+    CHECK(cpu.is_pending(PioRegisters::kPio0Irq0));
+
+    mem.write_word(PioRegisters::kPio0Base + 0x030, 1u);          // PIO IRQ w1c
+    pr.poll_interrupts();
+    CHECK_FALSE(cpu.is_pending(PioRegisters::kPio0Irq0));
+}
+
 TEST_CASE_FIXTURE(PioRegFix, "a blink program configured entirely through registers") {
     gpio.set_funcsel(25, Gpio::kFuncPio0);
     gpio.driver_set_pindir(Gpio::kPio0, 25, true);

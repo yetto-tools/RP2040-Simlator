@@ -11,6 +11,8 @@ Simulator::Simulator() {
     uart1_.attach(mem_);
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
+    pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);
+    pio1_regs_.connect_nvic(&cpu_, PioRegisters::kPio1Irq0);
 }
 
 ElfImage Simulator::load(const std::string& path, bool from_entry) {
@@ -38,6 +40,8 @@ ExecStatus Simulator::step() {
         pio1_.tick();
     }
     timer_.on_cycles(spent);
+    pio0_regs_.poll_interrupts();
+    pio1_regs_.poll_interrupts();
     return status;
 }
 

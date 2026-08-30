@@ -89,6 +89,26 @@ std::uint32_t PioRegisters::read_fstat() const {
     return v;
 }
 
+std::uint32_t PioRegisters::compute_intr() const {
+    // datasheet 3.7 INTR: [3:0] SMx_RXNEMPTY, [7:4] SMx_TXNFULL, [11:8] SM IRQ 0-3.
+    std::uint32_t v = 0;
+    for (unsigned i = 0; i < PioBlock::kNumSm; ++i) {
+        if (!block_.sm(i).rx.empty()) v |= (1u << i);
+        if (!block_.sm(i).tx.full())  v |= (1u << (4 + i));
+    }
+    v |= (static_cast<std::uint32_t>(block_.irq()) & 0xFu) << 8;
+    return v;
+}
+
+void PioRegisters::poll_interrupts() {
+    if (cpu_ == nullptr) return;
+    const std::uint32_t intr = compute_intr();
+    const std::uint32_t mis0 = (intr | irq0_intf_) & irq0_inte_;
+    const std::uint32_t mis1 = (intr | irq1_intf_) & irq1_inte_;
+    if (mis0 != 0) cpu_->pend_exception(nvic_irq0_);     else cpu_->clear_pending(nvic_irq0_);
+    if (mis1 != 0) cpu_->pend_exception(nvic_irq0_ + 1); else cpu_->clear_pending(nvic_irq0_ + 1);
+}
+
 std::uint32_t PioRegisters::read_flevel() const {
     std::uint32_t v = 0;
     for (unsigned i = 0; i < PioBlock::kNumSm; ++i) {
@@ -130,13 +150,13 @@ BusResult<std::uint32_t> PioRegisters::bus_read(std::uint32_t offset, BusWidth) 
         case kFDEBUG: return {0u, BusStatus::Ok};
         case kFLEVEL: return {read_flevel(), BusStatus::Ok};
         case kIRQ:    return {block_.irq(), BusStatus::Ok};
-        case kINTR:   return {block_.irq() & 0xFu, BusStatus::Ok};
+        case kINTR:   return {compute_intr(), BusStatus::Ok};
         case kIRQ0_INTE: return {irq0_inte_, BusStatus::Ok};
         case kIRQ0_INTF: return {irq0_intf_, BusStatus::Ok};
-        case kIRQ0_INTS: return {(block_.irq() & 0xFu) | irq0_intf_, BusStatus::Ok};
+        case kIRQ0_INTS: return {(compute_intr() | irq0_intf_) & irq0_inte_, BusStatus::Ok};
         case kIRQ1_INTE: return {irq1_inte_, BusStatus::Ok};
         case kIRQ1_INTF: return {irq1_intf_, BusStatus::Ok};
-        case kIRQ1_INTS: return {(block_.irq() & 0xFu) | irq1_intf_, BusStatus::Ok};
+        case kIRQ1_INTS: return {(compute_intr() | irq1_intf_) & irq1_inte_, BusStatus::Ok};
         default: return {0u, BusStatus::Ok};
     }
 }
@@ -182,6 +202,7 @@ BusStatus PioRegisters::bus_write(std::uint32_t offset, std::uint32_t value, Bus
         case kIRQ1_INTF: irq1_intf_ = value & 0xFFFu; break;
         default: break;
     }
+    poll_interrupts();
     return BusStatus::Ok;
 }
 
