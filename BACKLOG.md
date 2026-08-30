@@ -442,15 +442,23 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P1.4
 
-#### P5.3: Watchdog Timer
-- [ ] Configurable timeout
-- [ ] Watchdog kick (reset counter)
-- [ ] System reset on timeout
-- [ ] Pause on debug
-- **Tests**: 10+ watchdog tests
-- **Effort**: 10 hours
-- **Priority**: MEDIUM
-- **Dependencies**: P1.3, P1.4
+#### P5.3: Watchdog + RESETS  [IN PROGRESS]
+- [x] `Watchdog` (`src/peripherals/watchdog.{h,cpp}`) @ 0x40058000:
+      LOAD/CTRL down-counter (decrements by 2 per us per the HW quirk),
+      feed via LOAD, ENABLE, CTRL.TRIGGER force-reset, REASON (TIMER/FORCE),
+      SCRATCH0-7 (survive reset), TICK. Timeout -> Simulator resets the CPU.
+- [x] `Resets` (`src/peripherals/resets.{h,cpp}`) @ 0x4000C000: RESET / WDSEL
+      / RESET_DONE (= ~RESET, so pico-sdk unreset_block_wait returns) with the
+      +0x1000/2000/3000 XOR/SET/CLR atomic aliases
+- [ ] Pause-on-debug; watchdog-scoped resets via WDSEL
+- **Tests**: `tests/unit/test_watchdog.cpp` (5 cases)
+- **Design**: RP2040 datasheet 4.7, 2.14
+
+> **Cross-cutting TODO:** the +0x1000/2000/3000 atomic register aliases
+> (datasheet 2.1.2) are only handled by `Resets` so far. pico-sdk's
+> `hw_set_bits` / `hw_clear_bits` / `hw_xor_bits` use them on every
+> peripheral - a shared `AtomicPeripheral` base (span 0x4000, transform the
+> value before dispatch) should be added and adopted everywhere.
 
 #### P5.4: Real-Time Clock (RTC)
 - [ ] Date/time registers

@@ -16,6 +16,9 @@ Simulator::Simulator() {
     pwm_.attach(mem_);
     i2c0_.attach(mem_);
     i2c1_.attach(mem_);
+    resets_.attach(mem_);
+    watchdog_.attach(mem_);
+    watchdog_.on_reset([this] { cpu_.reset(); });
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
     pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);
@@ -49,6 +52,7 @@ ExecStatus Simulator::step() {
     timer_.on_cycles(spent);
     adc_.on_cycles(spent);
     pwm_.on_cycles(spent);
+    watchdog_.on_cycles(spent);
     pio0_regs_.poll_interrupts();
     pio1_regs_.poll_interrupts();
     return status;

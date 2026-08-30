@@ -60,6 +60,8 @@ add_library(rp2040_core STATIC
     src/peripherals/adc.cpp
     src/peripherals/dma.cpp
     src/peripherals/i2c.cpp
+    src/peripherals/resets.cpp
+    src/peripherals/watchdog.cpp
     src/peripherals/pwm.cpp
     src/peripherals/spi.cpp
 )

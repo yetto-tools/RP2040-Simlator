@@ -16,6 +16,8 @@
 #include "core/scs.h"
 #include "loaders/elf_loader.h"
 #include "peripherals/adc.h"
+#include "peripherals/resets.h"
+#include "peripherals/watchdog.h"
 #include "peripherals/dma.h"
 #include "peripherals/gpio.h"
 #include "peripherals/i2c.h"
@@ -70,6 +72,7 @@ public:
     Spi& spi(unsigned n) { return n == 0 ? spi0_ : spi1_; }
     Pwm& pwm() { return pwm_; }
     I2c& i2c(unsigned n) { return n == 0 ? i2c0_ : i2c1_; }
+    Watchdog& watchdog() { return watchdog_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -90,6 +93,8 @@ private:
     Pwm pwm_{cpu_, gpio_};
     I2c i2c0_{cpu_, I2c::kI2c0Base, I2c::kI2c0Irq};
     I2c i2c1_{cpu_, I2c::kI2c1Base, I2c::kI2c1Irq};
+    Resets resets_;
+    Watchdog watchdog_;
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};
