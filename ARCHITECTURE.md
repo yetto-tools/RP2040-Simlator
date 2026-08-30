@@ -24,18 +24,20 @@
 | Property | Value |
 |----------|-------|
 | **Architecture** | ARMv6-M |
-| **ISA** | Thumb subset: all 16-bit Thumb encodings + six 32-bit ones (`BL`, `DSB`, `DMB`, `ISB`, `MRS`, `MSR`) |
+| **ISA** | Full 16-bit Thumb set + a 6-instruction slice of Thumb-2 (`BL`, `DSB`, `DMB`, `ISB`, `MRS`, `MSR`); not the full ARMv7-M Thumb-2 |
 | **Pipeline Stages** | 3 (Fetch, Decode, Execute) |
 | **Registers** | 16 × 32-bit + special registers |
 | **Clock** | 125 MHz (configurable) |
 | **Endianness** | Little-endian |
 | **Exception Handling** | NVIC (nested vectored) |
 
-> **Datasheet deviation:** the Cortex-M0+ is **ARMv6-M**, not Thumb-2/ARMv7-M.
-> It has **no** `IT` blocks, `CBZ`/`CBNZ`, `LDRD`/`STRD`, `UMULL`/`SMULL`,
-> `TBB`/`TBH`, or the `Q`/`GE` status flags. Sections 1.4-1.5 below still list
-> some ARMv7-M-only instructions; those are pruned as the decoder (P1.2) lands.
-> `APSR` therefore holds only `N,Z,C,V`.
+> **Datasheet deviation:** the Cortex-M0+ is **ARMv6-M**. Its ISA is the full
+> 16-bit Thumb set plus a 6-instruction slice of Thumb-2's 32-bit encodings
+> (`BL`, `MSR`, `MRS`, `DSB`, `DMB`, `ISB`) - *not* the full Thumb-2 of
+> ARMv7-M. So there are **no** `IT` blocks, `CBZ`/`CBNZ`, `LDRD`/`STRD`,
+> `UMULL`/`SMULL`, `TBB`/`TBH`, 32-bit data processing, or the `Q`/`GE` status
+> flags. Sections 1.4-1.5 below still list some ARMv7-M-only instructions;
+> those are pruned as the decoder (P1.2) lands. `APSR` holds only `N,Z,C,V`.
 
 ### 1.2 Register File
 

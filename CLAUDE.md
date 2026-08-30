@@ -228,8 +228,10 @@ When asked to implement something, I should confirm:
 ## Key Concepts You Must Understand
 
 ### 1. ARM Cortex-M0+ CPU (2x on the RP2040)
-- 32-bit RISC processor, **ARMv6-M** architecture (NOT Thumb-2 / ARMv7-M)
-- ISA: all 16-bit Thumb encodings + 6 32-bit ones (BL, MSR, MRS, DSB, DMB, ISB)
+- 32-bit RISC processor, **ARMv6-M** architecture
+- ISA: the full 16-bit Thumb set + a 6-instruction slice of Thumb-2's 32-bit
+  encodings (BL, MSR, MRS, DSB, DMB, ISB). NOT the full Thumb-2 of ARMv7-M
+  (M3/M4) - no 32-bit data processing, IT, LDRD, UMULL, etc.
 - The 16-bit data ops are the flag-setting forms: MOVS, ADDS, SUBS, ANDS, LSLS,
   MULS, ... (no IT block, so no non-S 16-bit forms except high-reg MOV/ADD, ADR, ADD/SUB SP)
 - NOT present: IT, CBZ/CBNZ, LDRD/STRD, LDM.W/STM.W, UMULL/SMULL, SDIV/UDIV,
