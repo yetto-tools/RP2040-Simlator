@@ -29,6 +29,16 @@ Simulator::Simulator() {
     pio1_regs_.attach(mem_);
     pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);
     pio1_regs_.connect_nvic(&cpu_, PioRegisters::kPio1Irq0);
+
+    sio_.connect_cores(&cpu_, &cpu1_);
+    sio_.on_core1_launch([this](std::uint32_t vtor, std::uint32_t sp, std::uint32_t entry) {
+        regs1_.reset();
+        cpu1_.set_vtor(vtor);
+        regs1_.set_msp(sp);
+        regs1_.set_thumb((entry & 1u) != 0);
+        regs1_.set_pc(entry & ~std::uint32_t{1});
+        core1_running_ = true;
+    });
 }
 
 ElfImage Simulator::load(const std::string& path, bool from_entry) {
@@ -48,9 +58,16 @@ ElfImage Simulator::load(const std::string& path, bool from_entry) {
 }
 
 ExecStatus Simulator::step() {
+    sio_.set_active_core(0);
     const std::uint64_t before = cpu_.cycle_count();
     const ExecStatus status = cpu_.step();
     const std::uint64_t spent = cpu_.cycle_count() - before;
+
+    if (core1_running_) {
+        sio_.set_active_core(1);
+        cpu1_.step();
+        sio_.set_active_core(0);
+    }
     for (std::uint64_t i = 0; i < spent; ++i) {
         pio0_.tick();
         pio1_.tick();

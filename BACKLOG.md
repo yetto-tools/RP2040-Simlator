@@ -148,6 +148,20 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARMv6-M ARM B1.5, B3; ARCHITECTURE.md section 5
 - **Files**: `include/exceptions.h`, `src/core/{cpu,scs}.{h,cpp}`
 
+#### P1.6: Dual core  [IN PROGRESS]
+- [x] Second `Cpu` + `RegisterFile` (core1) in the `Simulator`; step() runs
+      core0 then core1 round-robin, sharing one `Memory`
+- [x] SIO rewritten per-core (`src/peripherals/sio.{h,cpp}`): CPUID follows
+      the active core, inter-core mailbox FIFO (2 x 8-deep) -> SIO_IRQ_PROC0/1
+      (IRQ15/16), 32 hardware spinlocks
+- [x] Core-1 launch: the `0,0,1,vtor,sp,entry` mailbox sequence sets core1's
+      VTOR/SP/PC and starts it (bootrom echo emulated)
+- [ ] Per-core NVIC / SysTick (today only core0 has an MMIO NVIC and receives
+      peripheral IRQs); core-0/core-1 SEV/WFE event signalling; exact
+      interleave timing
+- **Tests**: `tests/unit/test_multicore.cpp` (4 cases)
+- **Design**: RP2040 datasheet 2.3, 2.4
+
 #### P1.5: Clock Management (Basic)  [IN PROGRESS]
 - [x] Per-instruction cycle counter on `Cpu::step()` (`cycle_count()`)
 - [x] Cortex-M0+ instruction timing table (`src/core/timing.{h,cpp}`):

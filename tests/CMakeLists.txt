@@ -42,6 +42,7 @@ rp2040_add_test(test_watchdog unit/test_watchdog.cpp)
 rp2040_add_test(test_clocks unit/test_clocks.cpp)
 rp2040_add_test(test_rtc unit/test_rtc.cpp)
 rp2040_add_test(test_padsbank0 unit/test_padsbank0.cpp)
+rp2040_add_test(test_multicore unit/test_multicore.cpp)
 
 # ---------------------------------------------------------------------------
 # Integration: build a real Cortex-M0+ firmware fixture with the ARM

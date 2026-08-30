@@ -65,8 +65,11 @@ public:
     std::string status_line() const;
 
     RegisterFile& regs() { return regs_; }
+    RegisterFile& regs(unsigned core) { return core == 0 ? regs_ : regs1_; }
     Memory& memory() { return mem_; }
     Cpu& cpu() { return cpu_; }
+    Cpu& cpu(unsigned core) { return core == 0 ? cpu_ : cpu1_; }
+    bool core1_running() const { return core1_running_; }
     Gpio& gpio() { return gpio_; }
     Timer& timer() { return timer_; }
     Dma& dma() { return dma_; }
@@ -81,8 +84,11 @@ public:
 
 private:
     RegisterFile regs_;
+    RegisterFile regs1_;
     Memory mem_;
     Cpu cpu_{regs_, mem_};
+    Cpu cpu1_{regs1_, mem_};
+    bool core1_running_ = false;
     Gpio gpio_;
     Scs scs_{cpu_};
     Sio sio_{gpio_};
