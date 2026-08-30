@@ -202,26 +202,27 @@ When asked to implement something, I should confirm:
 
 ---
 
-## Current Phase: Planning
+## Current Phase: Implementation (Phases 1-7 substantially complete)
 
-**Status**: Architecture & design phase.
-**Deliverables**: Design docs (this file, ARCHITECTURE.md, BACKLOG.md)
-**Next**: Implementation phase starts after docs are finalized.
+**Status**: Core CPU, PIO co-processor, all non-USB peripherals, dual core
+(per-core NVIC), loaders (ELF + UF2), and the debug tooling (GDB stub, PIO
+debugger + disassembler, profiler) are implemented and unit-tested (36 suites,
+green under `-Werror`). `BACKLOG.md` has the authoritative per-feature status.
 
-### What I Should Do Now:
+**Next**: hardware-trace validation (P8.3, needs physical Pico boards),
+optional USB, and feeding the derived clock-tree frequency into peripheral
+pacing. See `BACKLOG.md` "Remaining gaps".
 
-1.  Read ALL documentation (README.md, DESIGN.md, ARCHITECTURE.md, BACKLOG.md)
-2.  Understand the execution model (CPU + PIO parallel)
-3.  Understand the constraint (100% fidelity, no shortcuts)
-4.  Ask clarifying questions about scope
-5.  Be ready to guide implementation phase
+### Working agreements for this phase:
 
-### What I Should NOT Do Now:
-
--  Generate code without design approval
--  Suggest simplifications to the scope
--  Skip documentation
--  Assume existing simulator code is adequate
+1. Keep the test suite green and warning-free on every commit (`-Werror`).
+2. Add tests alongside (ideally before) each behavioural change.
+3. Match the RP2040 datasheet exactly; document any approximation in
+   `BACKLOG.md` and `ARCHITECTURE.md`.
+4. Update `BACKLOG.md` (and `ARCHITECTURE.md` when the design changes) in the
+   same commit as the code.
+5. No `Co-Authored-By` / `Claude-*` trailers on commits (author's standing
+   instruction).
 
 ---
 
@@ -351,15 +352,15 @@ Before any component is "done", confirm:
 
 As development progresses, track:
 
-| Metric | Target | Current |
+| Metric | Target | Current (2026-08-30) |
 |--------|--------|---------|
-| CPU ISA coverage | 100% | TBD |
-| PIO ISA coverage | 100% | TBD |
-| Peripheral coverage | 95% | TBD |
-| Code coverage | >90% | TBD |
-| Hardware accuracy | ±1% | TBD |
-| Test count | 200+ | TBD |
-| Documentation completeness | 100% | TBD |
+| CPU ISA coverage | 100% | 100% of ARMv6-M (all 16-bit Thumb + BL/MRS/MSR/DSB/DMB/ISB); ARMv7-M-only encodings rejected as UNDEFINED |
+| PIO ISA coverage | 100% | 100% (all 9 instructions + side-set, delay, autopush/pull, WAIT/IRQ) |
+| Peripheral coverage | 95% | GPIO/SIO/PADS/IO_BANK0, TIMER, UART x2, SPI x2, I2C x2, PWM, ADC, DMA, RTC, Watchdog, RESETS, SYSINFO, clock tree (XOSC/ROSC/PLL x2/CLOCKS). Missing: USB, SSI/XIP, bus fabric perf counters |
+| Code coverage | >90% | not yet measured (no gcov wiring) |
+| Hardware accuracy | ±1% | not yet validated against silicon (needs 2x Pico + logic analyser) |
+| Test count | 200+ | 275 TEST_CASE + 81 SUBCASE across 36 suites, ~1950 assertions, green under -Werror |
+| Documentation completeness | 100% | CLAUDE/README/DESIGN/ARCHITECTURE/BACKLOG maintained; ARCHITECTURE up to date through P7 |
 
 ---
 
@@ -393,5 +394,5 @@ As development progresses, track:
 
 ---
 
-**Last Updated**: 2024-08-28
+**Last Updated**: 2026-08-30
 **Audience**: Claude (AI assistant), developers, thesis reviewers
