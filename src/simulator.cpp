@@ -18,6 +18,10 @@ Simulator::Simulator() {
     i2c1_.attach(mem_);
     resets_.attach(mem_);
     watchdog_.attach(mem_);
+    xosc_.attach(mem_);
+    pll_sys_.attach(mem_);
+    pll_usb_.attach(mem_);
+    clocks_.attach(mem_);
     watchdog_.on_reset([this] { cpu_.reset(); });
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);

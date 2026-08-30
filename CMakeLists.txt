@@ -58,6 +58,7 @@ add_library(rp2040_core STATIC
     src/peripherals/timer.cpp
     src/peripherals/uart.cpp
     src/peripherals/adc.cpp
+    src/peripherals/clocks.cpp
     src/peripherals/dma.cpp
     src/peripherals/i2c.cpp
     src/peripherals/resets.cpp

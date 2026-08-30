@@ -16,6 +16,7 @@
 #include "core/scs.h"
 #include "loaders/elf_loader.h"
 #include "peripherals/adc.h"
+#include "peripherals/clocks.h"
 #include "peripherals/resets.h"
 #include "peripherals/watchdog.h"
 #include "peripherals/dma.h"
@@ -95,6 +96,10 @@ private:
     I2c i2c1_{cpu_, I2c::kI2c1Base, I2c::kI2c1Irq};
     Resets resets_;
     Watchdog watchdog_;
+    Xosc xosc_;
+    Pll pll_sys_{Pll::kSysBase};
+    Pll pll_usb_{Pll::kUsbBase};
+    Clocks clocks_;
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};

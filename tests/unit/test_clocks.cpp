@@ -1,0 +1,59 @@
+// Unit tests for the minimal clock-tree peripherals (XOSC / PLL / CLOCKS).
+// These exist so pico-sdk's clocks_init() runs without spinning.
+#include "doctest.h"
+
+#include <cstdint>
+
+#include "core/memory.h"
+#include "peripherals/clocks.h"
+
+using namespace rp2040;
+
+TEST_CASE("XOSC reports STABLE once CTRL.ENABLE has the magic value") {
+    Memory mem;
+    Xosc xosc;
+    REQUIRE(xosc.attach(mem));
+
+    CHECK((mem.read_word(Xosc::kBase + 0x04).value & (1u << 31)) == 0);   // not stable
+    mem.write_word(Xosc::kBase + 0x00, 0xFAB000u | 0xAA0u);               // ENABLE=0xFAB, FREQ_RANGE
+    CHECK((mem.read_word(Xosc::kBase + 0x04).value & (1u << 31)) != 0);   // STATUS.STABLE
+    CHECK((mem.read_word(Xosc::kBase + 0x04).value & (1u << 12)) != 0);   // STATUS.ENABLED
+}
+
+TEST_CASE("PLL reports LOCK when powered and not bypassed") {
+    Memory mem;
+    Pll pll(Pll::kSysBase);
+    REQUIRE(pll.attach(mem));
+
+    // Reset PWR = all bits set (powered down) -> no lock.
+    CHECK((mem.read_word(Pll::kSysBase + 0x00).value & (1u << 31)) == 0);
+    mem.write_word(Pll::kSysBase + 0x08, 125u);          // FBDIV_INT
+    mem.write_word(Pll::kSysBase + 0x04, 0u);            // PWR: power everything up
+    CHECK((mem.read_word(Pll::kSysBase + 0x00).value & (1u << 31)) != 0);  // CS.LOCK
+
+    mem.write_word(Pll::kSysBase + 0x00, 1u << 8);       // CS.BYPASS
+    CHECK((mem.read_word(Pll::kSysBase + 0x00).value & (1u << 31)) == 0);  // lock drops
+}
+
+TEST_CASE("CLOCKS: SELECTED follows CTRL.SRC and DIV round-trips") {
+    Memory mem;
+    Clocks clk;
+    REQUIRE(clk.attach(mem));
+
+    // clk_ref (generator 0): CTRL @ +0x00, DIV @ +0x04, SELECTED @ +0x08.
+    CHECK(mem.read_word(Clocks::kBase + 0x08).value == 0x1u);   // SRC 0 -> bit 0
+    mem.write_word(Clocks::kBase + 0x00, 0x2u);                 // CTRL.SRC = 2
+    CHECK(mem.read_word(Clocks::kBase + 0x08).value == (1u << 2));
+
+    mem.write_word(Clocks::kBase + 0x04, 0x00030000u);          // DIV
+    CHECK(mem.read_word(Clocks::kBase + 0x04).value == 0x00030000u);
+}
+
+TEST_CASE("clock-tree peripherals honour the atomic SET alias") {
+    Memory mem;
+    Clocks clk;
+    REQUIRE(clk.attach(mem));
+    // clk_sys (generator 1): CTRL @ +0x0C. Atomic-set the ENABLE bit (11).
+    mem.write_word(Clocks::kBase + 0x2000u + 0x0Cu, 1u << 11);
+    CHECK((mem.read_word(Clocks::kBase + 0x0Cu).value & (1u << 11)) != 0);
+}

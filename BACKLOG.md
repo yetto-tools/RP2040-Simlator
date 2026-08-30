@@ -472,7 +472,20 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 6: Clock Manager (Week 9)
 
-#### P6.1: Oscillators & PLL
+#### P6.0: Minimal clock tree (boot passthrough)  [IN PROGRESS]
+- [x] `Xosc` @ 0x40024000: CTRL, STATUS.STABLE/ENABLED once ENABLE = 0xFAB
+- [x] `Pll` x2 @ 0x40028000 / 0x4002C000: CS.LOCK once powered + not bypassed,
+      PWR / FBDIV_INT / PRIM stored
+- [x] `Clocks` @ 0x40008000: 10 generators x CTRL/DIV; SELECTED one-hot of
+      CTRL.SRC so `clock_configure()` does not spin
+- [x] All on `AtomicPeripheral`; wired into the Simulator
+- [ ] Actually derive `Cpu` / peripheral tick rates from the configured tree
+      (today everything assumes a fixed 125 MHz)
+- **Tests**: `tests/unit/test_clocks.cpp` (4 cases)
+- **Files**: `src/peripherals/clocks.{h,cpp}`
+- **Design**: RP2040 datasheet 2.15-2.18
+
+#### P6.1: Oscillators & PLL (accurate)
 - [ ] XOSC (12 MHz crystal)
 - [ ] ROSC (ring oscillator, configurable)
 - [ ] CPU PLL
