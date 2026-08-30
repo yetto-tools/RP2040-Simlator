@@ -50,6 +50,9 @@ add_library(rp2040_core STATIC
     src/loaders/elf_loader.cpp
     src/pio/pio_decode.cpp
     src/pio/state_machine.cpp
+    src/peripherals/gpio.cpp
+    src/peripherals/sio.cpp
+    src/peripherals/iobank0.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)
 target_link_libraries(rp2040_core PRIVATE rp2040_project_options)

@@ -262,18 +262,21 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 3: GPIO + Timer (Week 6)
 
-#### P3.1: GPIO Controller
-- [ ] 28 GPIO pins (GPIO0-GPIO27)
-- [ ] Input/Output mode
-- [ ] Pull-up/pull-down
-- [ ] Slew rate control
-- [ ] Drive strength (2mA, 4mA, 8mA, 12mA)
-- [ ] Output enable override
-- [ ] Glitch filter (5-cycle delay)
-- **Tests**: 30+ GPIO tests
+#### P3.1: GPIO Controller  [IN PROGRESS]
+- [x] 30-pin pad model (`src/peripherals/gpio.{h,cpp}`): FUNCSEL routing
+      (SIO / PIO0 / PIO1), per-driver OUT + OE, pad pulls, external stimulus,
+      effective pad-driving / pad-level / input-level resolution
+- [x] SIO block (`src/peripherals/sio.{h,cpp}`) @ 0xD0000000: CPUID, GPIO_IN,
+      GPIO_OUT/OE with SET/CLR/XOR atomic aliases; memory decoder routes SIO
+- [x] IO_BANK0 (`src/peripherals/iobank0.{h,cpp}`) @ 0x40014000: GPIOx_CTRL
+      FUNCSEL, GPIOx_STATUS level bits
+- [ ] PADS_BANK0 register window (pulls/drive/schmitt via MMIO)
+- [ ] Slew / drive strength / glitch filter (behavioural, low priority)
+- **Tests**: `tests/unit/test_gpio.cpp` (7 cases)
 - **Effort**: 25 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3
+- **Design**: RP2040 datasheet 2.3.1, 2.19
 
 #### P3.2: GPIO Interrupts
 - [ ] Edge detection (low, high, rising, falling)
