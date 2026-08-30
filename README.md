@@ -117,6 +117,9 @@ variables `CMAKE_CXX_COMPILER` / `CMAKE_MAKE_PROGRAM` at your toolchain.
 # A .uf2 drag-and-drop image is loaded as a UF2 container and always
 # resets through its vector table
 ./rp2040-sim firmware.uf2
+
+# Print a hot-spot / CPI / interrupt profile after the run
+./rp2040-sim --entry --profile firmware.elf
 ```
 
 ### Debug with GDB

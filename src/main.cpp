@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "debuggers/gdb_stub.h"
+#include "debuggers/profiler.h"
 #include "simulator.h"
 
 namespace {
@@ -21,6 +22,7 @@ void print_usage(const char* argv0) {
               << "  --gdb <port>  Wait for arm-none-eabi-gdb on localhost:<port>\n"
               << "  --max <n>   Stop after n instructions (default 10000000)\n"
               << "  --entry     Start at e_entry instead of the reset vector\n"
+              << "  --profile   Print a hot-spot / CPI / interrupt profile after the run\n"
               << "  --version   Print the core version and exit\n"
               << "  --help      Show this message\n";
 }
@@ -41,8 +43,30 @@ const char* status_name(rp2040::ExecStatus s) {
     return "?";
 }
 
+void print_profile(const rp2040::Profiler::Report& rep) {
+    std::printf("\nprofile: %llu instructions, %llu cycles, CPI %.3f\n",
+                static_cast<unsigned long long>(rep.instructions),
+                static_cast<unsigned long long>(rep.cycles),
+                rep.cycles_per_instruction);
+    std::printf("  hot spots (pc: count, cycles):\n");
+    for (const rp2040::Profiler::HotSpot& h : rep.hot_spots) {
+        std::printf("    0x%08X: %8llu  %8llu\n", h.pc,
+                    static_cast<unsigned long long>(h.count),
+                    static_cast<unsigned long long>(h.cycles));
+    }
+    if (!rep.exceptions.empty()) {
+        std::printf("  exceptions (vector: entries, total/max handler cycles):\n");
+        for (const rp2040::Profiler::ExceptionStat& e : rep.exceptions) {
+            std::printf("    %2u: %6llu  %8llu / %llu\n", e.vector,
+                        static_cast<unsigned long long>(e.entries),
+                        static_cast<unsigned long long>(e.total_handler_cycles),
+                        static_cast<unsigned long long>(e.max_handler_cycles));
+        }
+    }
+}
+
 int run_image(const std::string& path, std::uint64_t max_instructions, bool from_entry,
-              int gdb_port) {
+              int gdb_port, bool profile) {
     rp2040::Simulator sim;
     const rp2040::ElfImage img = sim.load(path, from_entry);
     if (!img.ok) {
@@ -62,7 +86,9 @@ int run_image(const std::string& path, std::uint64_t max_instructions, bool from
         return 0;
     }
 
-    const rp2040::Simulator::RunResult r = sim.run(max_instructions);
+    rp2040::Profiler prof(sim);
+    const rp2040::Simulator::RunResult r =
+        profile ? prof.run(max_instructions) : sim.run(max_instructions);
     if (r.self_branch) {
         std::printf("halted: self-branch at 0x%08X\n", r.stopped_at);
     } else if (r.hit_cap) {
@@ -81,6 +107,8 @@ int run_image(const std::string& path, std::uint64_t max_instructions, bool from
                     n + 2, regs.get(n + 2), n + 3, regs.get(n + 3));
     }
     std::printf("  xpsr=%08X  gpio_in=%08X\n", regs.xpsr(), sim.gpio().input_bits());
+
+    if (profile) print_profile(prof.report());
     return 0;
 }
 
@@ -89,6 +117,7 @@ int run_image(const std::string& path, std::uint64_t max_instructions, bool from
 int main(int argc, char** argv) {
     std::uint64_t max_instructions = 10'000'000;
     bool from_entry = false;
+    bool profile = false;
     int gdb_port = 0;
     std::string image;
 
@@ -97,6 +126,7 @@ int main(int argc, char** argv) {
         if (arg == "--help" || arg == "-h") { print_usage(argv[0]); return 0; }
         if (arg == "--version") { std::cout << rp2040::version_string() << '\n'; return 0; }
         if (arg == "--entry") { from_entry = true; continue; }
+        if (arg == "--profile") { profile = true; continue; }
         if (arg == "--max") {
             if (i + 1 >= argc) { std::cerr << "error: --max needs an argument\n"; return 2; }
             max_instructions = std::stoull(argv[++i]);
@@ -116,5 +146,5 @@ int main(int argc, char** argv) {
     }
 
     if (image.empty()) { print_usage(argv[0]); return 2; }
-    return run_image(image, max_instructions, from_entry, gdb_port);
+    return run_image(image, max_instructions, from_entry, gdb_port, profile);
 }
