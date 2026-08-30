@@ -488,18 +488,20 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 7: Loaders & Debugging (Week 10)
 
-#### P7.1: ELF Loader
-- [ ] Parse ELF header (magic, architecture)
-- [ ] Verify ARM 32-bit
-- [ ] Read program headers
-- [ ] Load segments into memory
-- [ ] Symbol table extraction (for debugging)
-- [ ] Entry point determination
-- [ ] Section mapping
-- **Tests**: 10+ ELF files
+#### P7.1: ELF Loader  [IN PROGRESS - pulled forward for CPU validation]
+- [x] Parse + validate ELF32 header (magic, ELFCLASS32, LSB, ET_EXEC/DYN, EM_ARM)
+- [x] Read program headers, load PT_LOAD segments at p_paddr (LMA) via backdoor
+- [x] Zero-fill the BSS tail (p_memsz > p_filesz); bounds-check every range
+- [x] Entry point (e_entry) reported; lowest/highest loaded address
+- [x] `load_elf_file()` convenience; CLI `rp2040-sim <firmware.elf>` driver
+- [ ] Symbol table / section names (for the debugger / traces)
+- **Tests**: `tests/unit/test_elf_loader.cpp` (synthetic ELFs) +
+      `tests/integration/test_firmware.cpp` (real arm-none-eabi-gcc -O2 image
+      built by CMake, run end-to-end through the simulator)
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3
+- **Files**: `src/loaders/elf_loader.{h,cpp}`, `src/main.cpp`, `tests/fixtures/`
 
 #### P7.2: UF2 Loader
 - [ ] Parse UF2 block format

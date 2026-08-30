@@ -25,3 +25,34 @@ rp2040_add_test(test_cpu_exec unit/test_cpu_exec.cpp)
 rp2040_add_test(test_timing unit/test_timing.cpp)
 rp2040_add_test(test_exceptions unit/test_exceptions.cpp)
 rp2040_add_test(test_scs unit/test_scs.cpp)
+rp2040_add_test(test_elf_loader unit/test_elf_loader.cpp)
+
+# ---------------------------------------------------------------------------
+# Integration: build a real Cortex-M0+ firmware fixture with the ARM
+# cross-toolchain (if present) and run it through the whole simulator.
+# When arm-none-eabi-gcc is not found the test still builds and reports its
+# cases as skipped.
+# ---------------------------------------------------------------------------
+rp2040_add_test(test_firmware integration/test_firmware.cpp)
+
+find_program(ARM_NONE_EABI_GCC arm-none-eabi-gcc)
+if(ARM_NONE_EABI_GCC)
+    set(_fw_src  ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sum.c)
+    set(_fw_ld   ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/firmware.ld)
+    set(_fw_elf  ${CMAKE_CURRENT_BINARY_DIR}/sum.elf)
+    add_custom_command(
+        OUTPUT ${_fw_elf}
+        COMMAND ${ARM_NONE_EABI_GCC}
+                -mcpu=cortex-m0plus -mthumb -nostdlib -nostartfiles
+                -ffreestanding -O2 -Wl,--build-id=none -Wl,--no-warn-rwx-segments
+                -T ${_fw_ld} -o ${_fw_elf} ${_fw_src}
+        DEPENDS ${_fw_src} ${_fw_ld}
+        COMMENT "Building Cortex-M0+ firmware fixture (sum.elf)"
+        VERBATIM)
+    add_custom_target(firmware_fixture DEPENDS ${_fw_elf})
+    add_dependencies(test_firmware firmware_fixture)
+    target_compile_definitions(test_firmware PRIVATE "RP2040_FIRMWARE_SUM_ELF=\"${_fw_elf}\"")
+    message(STATUS "Firmware integration test enabled (${ARM_NONE_EABI_GCC})")
+else()
+    message(STATUS "arm-none-eabi-gcc not found - firmware integration test will skip")
+endif()
