@@ -1,41 +1,75 @@
-// simulator.h - Top-level orchestrator that ties the CPU cores, PIO blocks,
-// peripherals and clock together and advances them cycle by cycle.
+// simulator.h - top-level RP2040 machine: the Cortex-M0+ core plus the
+// peripherals it drives, advanced together one instruction at a time.
 //
-// This is a scaffold: the run loop and subsystem wiring are filled in as the
-// components land (see BACKLOG.md, Phase 1+). The public surface is kept
-// minimal on purpose so the CLI and tests have a stable entry point.
+// Each retired CPU instruction costs a number of core cycles (Cortex-M0+
+// timings); the PIO blocks are ticked that many system clocks so PIO stays
+// in step with the CPU.
 #ifndef RP2040_SIMULATOR_H
 #define RP2040_SIMULATOR_H
 
 #include <cstdint>
 #include <string>
 
+#include "core/cpu.h"
+#include "core/memory.h"
+#include "core/registers.h"
+#include "core/scs.h"
+#include "loaders/elf_loader.h"
+#include "peripherals/gpio.h"
+#include "peripherals/iobank0.h"
+#include "peripherals/sio.h"
+#include "pio/pio_block.h"
+#include "pio/pio_registers.h"
 #include "rp2040.h"
 
 namespace rp2040 {
 
-struct SimulatorConfig {
-    std::uint32_t sys_clk_hz = kDefaultSysClkHz;
-};
-
 class Simulator {
 public:
-    Simulator() = default;
-    explicit Simulator(SimulatorConfig config);
+    Simulator();
 
-    // Total number of system clock cycles retired so far. Deterministic.
-    std::uint64_t cycle_count() const { return cycles_; }
+    // Load an ELF image, point VTOR at its lowest loaded address and reset.
+    // With `from_entry`, instead jump straight to e_entry with SP at top of SRAM.
+    ElfImage load(const std::string& path, bool from_entry = false);
 
-    // Advance the whole machine by exactly `n` system clock cycles.
-    // Currently a no-op placeholder that only moves the cycle counter.
-    void step(std::uint64_t n = 1);
+    void reset() { cpu_.reset(); }
 
-    // Human-readable one-line status, useful for the CLI and smoke tests.
+    struct RunResult {
+        ExecStatus status = ExecStatus::Ok;
+        std::uint64_t instructions = 0;
+        std::uint64_t cycles = 0;
+        std::uint32_t stopped_at = 0;
+        bool hit_cap = false;
+        bool self_branch = false;
+    };
+
+    // Execute one instruction and tick the PIO blocks by the cycles it cost.
+    ExecStatus step();
+
+    // step() until a self-branch, a non-Ok status, or `max_instructions`.
+    RunResult run(std::uint64_t max_instructions = 10'000'000);
+
+    std::uint64_t cycle_count() const { return cpu_.cycle_count(); }
     std::string status_line() const;
 
+    RegisterFile& regs() { return regs_; }
+    Memory& memory() { return mem_; }
+    Cpu& cpu() { return cpu_; }
+    Gpio& gpio() { return gpio_; }
+    PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
+
 private:
-    SimulatorConfig config_{};
-    std::uint64_t cycles_ = 0;
+    RegisterFile regs_;
+    Memory mem_;
+    Cpu cpu_{regs_, mem_};
+    Gpio gpio_;
+    Scs scs_{cpu_};
+    Sio sio_{gpio_};
+    IoBank0 iobank_{gpio_};
+    PioBlock pio0_{gpio_, 0};
+    PioBlock pio1_{gpio_, 1};
+    PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};
+    PioRegisters pio1_regs_{pio1_, PioRegisters::kPio1Base};
 };
 
 // Semantic version of the simulator core.
