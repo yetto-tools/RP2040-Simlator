@@ -90,10 +90,20 @@ pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake
 ```bash
 git clone https://github.com/yourusername/rp2040-simulator.git
 cd rp2040-simulator
-cmake -S . -B build
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+
+# With the host compiler on PATH (uses CMakePresets.json):
+cmake --preset default
+cmake --build --preset default
+ctest --preset default
+
+# ...or plain, pointing at any generator/compiler you have:
+cmake -S . -B build && cmake --build build -j && ctest --test-dir build --output-on-failure
 ```
+
+No host compiler installed? The portable
+[w64devkit](https://github.com/skeeto/w64devkit) (GCC, no admin rights) works;
+copy `CMakeUserPresets.json` from an existing checkout or point the cache
+variables `CMAKE_CXX_COMPILER` / `CMAKE_MAKE_PROGRAM` at your toolchain.
 
 ### Run Simple Test
 
