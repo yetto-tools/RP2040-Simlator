@@ -406,6 +406,21 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 5: ADC + Advanced Interrupts (Week 8)
 
+#### P4.4: DMA Controller (0x50000000)  [IN PROGRESS]
+- [x] `Dma` BusPeripheral (`src/peripherals/dma.{h,cpp}`), 12 channels
+- [x] READ_ADDR / WRITE_ADDR / TRANS_COUNT / CTRL + all four alias groups,
+      trigger on the last register of each alias
+- [x] Functional transfer through the Memory bus: byte/half/word, INCR_READ /
+      INCR_WRITE, RING_SIZE/RING_SEL wrap, BSWAP; READ/WRITE_ERROR on bus fault
+- [x] CHAIN_TO (with loop guard), MULTI_CHAN_TRIGGER, CHAN_ABORT
+- [x] INTR (w1c) / INTE0/INTF0/INTS0 + INTE1/INTF1/INTS1 -> DMA_IRQ_0 (IRQ11)
+      / DMA_IRQ_1 (IRQ12); N_CHANNELS
+- [ ] DREQ pacing (every TREQ currently runs unpaced/immediately); sniff CRC;
+      DMA timers; per-transfer cycle cost
+- **Tests**: `tests/unit/test_dma.cpp` (9 cases)
+- **Files**: `src/peripherals/dma.{h,cpp}`
+- **Design**: RP2040 datasheet 2.5
+
 #### P5.1: ADC Controller
 - [ ] 4 GPIO channels (GPIO26-GPIO29)
 - [ ] Temperature sensor (VBE)

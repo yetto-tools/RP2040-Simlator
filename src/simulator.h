@@ -15,6 +15,7 @@
 #include "core/registers.h"
 #include "core/scs.h"
 #include "loaders/elf_loader.h"
+#include "peripherals/dma.h"
 #include "peripherals/gpio.h"
 #include "peripherals/iobank0.h"
 #include "peripherals/sio.h"
@@ -59,6 +60,7 @@ public:
     Cpu& cpu() { return cpu_; }
     Gpio& gpio() { return gpio_; }
     Timer& timer() { return timer_; }
+    Dma& dma() { return dma_; }
     Uart& uart(unsigned n) { return n == 0 ? uart0_ : uart1_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
@@ -71,6 +73,7 @@ private:
     Sio sio_{gpio_};
     IoBank0 iobank_{gpio_};
     Timer timer_{cpu_};
+    Dma dma_{cpu_, mem_};
     Uart uart0_{cpu_, Uart::kUart0Base, Uart::kUart0Irq};
     Uart uart1_{cpu_, Uart::kUart1Base, Uart::kUart1Irq};
     PioBlock pio0_{gpio_, 0};
