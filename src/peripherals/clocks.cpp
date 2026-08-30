@@ -31,6 +31,72 @@ BusStatus Xosc::reg_write(std::uint32_t reg, std::uint32_t value, BusWidth) {
     return BusStatus::Ok;
 }
 
+// --- ROSC ---------------------------------------------------------------
+namespace {
+enum : std::uint32_t {
+    kROSC_CTRL = 0x00, kROSC_FREQA = 0x04, kROSC_FREQB = 0x08, kROSC_DORMANT = 0x0C,
+    kROSC_DIV = 0x10, kROSC_PHASE = 0x14, kROSC_STATUS = 0x18, kROSC_RANDOMBIT = 0x1C,
+    kROSC_COUNT = 0x20,
+};
+constexpr std::uint32_t kROSC_ENABLE_DISABLE = 0xD1Eu;   // CTRL.ENABLE = DISABLE
+constexpr std::uint32_t kROSC_FREQ_PASSWD = 0x9696u;     // FREQA/FREQB bits [31:16]
+constexpr std::uint32_t kROSC_STATUS_ENABLED = 1u << 12;
+constexpr std::uint32_t kROSC_STATUS_DIV_RUNNING = 1u << 16;
+constexpr std::uint32_t kROSC_STATUS_BADWRITE = 1u << 24;
+constexpr std::uint32_t kROSC_STATUS_STABLE = 1u << 31;
+
+bool rosc_enabled(std::uint32_t ctrl) {
+    return ((ctrl >> 12) & 0xFFFu) != kROSC_ENABLE_DISABLE;
+}
+}  // namespace
+
+BusResult<std::uint32_t> Rosc::reg_read(std::uint32_t reg, BusWidth) {
+    switch (reg) {
+        case kROSC_CTRL:    return {ctrl_, BusStatus::Ok};
+        case kROSC_FREQA:   return {freqa_, BusStatus::Ok};
+        case kROSC_FREQB:   return {freqb_, BusStatus::Ok};
+        case kROSC_DORMANT: return {dormant_, BusStatus::Ok};
+        case kROSC_DIV:     return {div_, BusStatus::Ok};
+        case kROSC_PHASE:   return {phase_, BusStatus::Ok};
+        case kROSC_STATUS: {
+            std::uint32_t s = 0;
+            if (rosc_enabled(ctrl_)) s |= kROSC_STATUS_ENABLED | kROSC_STATUS_DIV_RUNNING |
+                                          kROSC_STATUS_STABLE;
+            if (badwrite_) s |= kROSC_STATUS_BADWRITE;
+            return {s, BusStatus::Ok};
+        }
+        case kROSC_RANDOMBIT: {
+            const std::uint32_t v = randbit_ ? 1u : 0u;
+            randbit_ = !randbit_;
+            return {v, BusStatus::Ok};
+        }
+        case kROSC_COUNT:   return {0u, BusStatus::Ok};
+        default:            return {0u, BusStatus::Ok};
+    }
+}
+
+BusStatus Rosc::reg_write(std::uint32_t reg, std::uint32_t value, BusWidth) {
+    switch (reg) {
+        case kROSC_CTRL:    ctrl_ = value; break;
+        case kROSC_FREQA:
+            if (((value >> 16) & 0xFFFFu) != kROSC_FREQ_PASSWD) { badwrite_ = true; break; }
+            freqa_ = value & 0xFFFFu;
+            break;
+        case kROSC_FREQB:
+            if (((value >> 16) & 0xFFFFu) != kROSC_FREQ_PASSWD) { badwrite_ = true; break; }
+            freqb_ = value & 0xFFFFu;
+            break;
+        case kROSC_DORMANT: dormant_ = value; break;
+        case kROSC_DIV:     div_ = value & 0xFFFu; break;
+        case kROSC_PHASE:   phase_ = value & 0xFFFu; break;
+        case kROSC_STATUS:
+            if (value & kROSC_STATUS_BADWRITE) badwrite_ = false;  // write-1-to-clear
+            break;
+        default: break;
+    }
+    return BusStatus::Ok;
+}
+
 // --- PLL ----------------------------------------------------------------
 namespace {
 enum : std::uint32_t { kPLL_CS = 0x00, kPLL_PWR = 0x04, kPLL_FBDIV_INT = 0x08, kPLL_PRIM = 0x0C };

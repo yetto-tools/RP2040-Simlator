@@ -497,6 +497,9 @@ Week 12:    PHASE 9 - Documentation & Release
 
 #### P6.0: Minimal clock tree (boot passthrough)  [IN PROGRESS]
 - [x] `Xosc` @ 0x40024000: CTRL, STATUS.STABLE/ENABLED once ENABLE = 0xFAB
+- [x] `Rosc` @ 0x40060000: boots enabled + STABLE (RP2040 runs from ROSC at
+      reset), STATUS.ENABLED/DIV_RUNNING/STABLE track CTRL.ENABLE, FREQA/FREQB
+      password-guarded with STATUS.BADWRITE (w1c), RANDOMBIT, DIV/PHASE stored
 - [x] `Pll` x2 @ 0x40028000 / 0x4002C000: CS.LOCK once powered + not bypassed,
       PWR / FBDIV_INT / PRIM stored
 - [x] `Clocks` @ 0x40008000: 10 generators x CTRL/DIV; SELECTED one-hot of
@@ -504,13 +507,13 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] All on `AtomicPeripheral`; wired into the Simulator
 - [ ] Actually derive `Cpu` / peripheral tick rates from the configured tree
       (today everything assumes a fixed 125 MHz)
-- **Tests**: `tests/unit/test_clocks.cpp` (4 cases)
+- **Tests**: `tests/unit/test_clocks.cpp` (7 cases)
 - **Files**: `src/peripherals/clocks.{h,cpp}`
 - **Design**: RP2040 datasheet 2.15-2.18
 
 #### P6.1: Oscillators & PLL (accurate)
-- [ ] XOSC (12 MHz crystal)
-- [ ] ROSC (ring oscillator, configurable)
+- [x] XOSC (12 MHz crystal) - functional model (STABLE/ENABLED)
+- [x] ROSC (ring oscillator) - functional model (STABLE/BADWRITE/RANDOMBIT)
 - [ ] CPU PLL
   - [ ] Feedback divider (FBDIV)
   - [ ] Post-dividers (POSTDIV1, POSTDIV2)
@@ -933,7 +936,7 @@ Week 12:    PHASE 9 - Documentation & Release
 **Goal**: PLL, oscillators, clock switching
 
 **Tasks**:
-- [ ] P6.1.1: XOSC & ROSC
+- [x] P6.1.1: XOSC & ROSC (functional models)
 - [ ] P6.1.2: CPU PLL (1200 MHz  125 MHz)
 - [ ] P6.1.3: USB PLL (480 MHz  48 MHz)
 - [ ] P6.1.4: Lock detection

@@ -29,6 +29,29 @@ private:
     std::uint32_t startup_ = 0;
 };
 
+// Ring oscillator (datasheet 2.17). The RP2040 boots running from ROSC, so it
+// reports enabled + stable out of reset; the simulator's timing is fixed, so
+// the frequency-control fields are only stored, not acted on. Password-guarded
+// registers set STATUS.BADWRITE on a bad write (write-1-to-clear).
+class Rosc : public AtomicPeripheral {
+public:
+    static constexpr std::uint32_t kBase = 0x40060000u;
+    static constexpr std::uint32_t kSize = AtomicPeripheral::kAtomicSize;
+    bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
+    BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
+    BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+
+private:
+    std::uint32_t ctrl_ = 0;      // ENABLE field 0 => treated as enabled (boot default)
+    std::uint32_t freqa_ = 0;
+    std::uint32_t freqb_ = 0;
+    std::uint32_t dormant_ = 0x77616B65u;  // "wake"
+    std::uint32_t div_ = 0xAA0u;
+    std::uint32_t phase_ = 0x08u;
+    bool badwrite_ = false;
+    bool randbit_ = true;
+};
+
 class Pll : public AtomicPeripheral {
 public:
     static constexpr std::uint32_t kSysBase = 0x40028000u;

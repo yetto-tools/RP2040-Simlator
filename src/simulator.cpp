@@ -32,6 +32,7 @@ Simulator::Simulator() {
     pads_.attach(mem_);
     rtc_.attach(mem_);
     xosc_.attach(mem_);
+    rosc_.attach(mem_);
     pll_sys_.attach(mem_);
     pll_usb_.attach(mem_);
     clocks_.attach(mem_);

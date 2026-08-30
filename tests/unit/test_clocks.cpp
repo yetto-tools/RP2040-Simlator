@@ -49,6 +49,52 @@ TEST_CASE("CLOCKS: SELECTED follows CTRL.SRC and DIV round-trips") {
     CHECK(mem.read_word(Clocks::kBase + 0x04).value == 0x00030000u);
 }
 
+TEST_CASE("ROSC boots enabled + stable and clears STABLE when disabled") {
+    Memory mem;
+    Rosc rosc;
+    REQUIRE(rosc.attach(mem));
+
+    const std::uint32_t status = Rosc::kBase + 0x18;
+    std::uint32_t s = mem.read_word(status).value;
+    CHECK((s & (1u << 31)) != 0);   // STABLE out of reset
+    CHECK((s & (1u << 12)) != 0);   // ENABLED
+    CHECK((s & (1u << 16)) != 0);   // DIV_RUNNING
+
+    mem.write_word(Rosc::kBase + 0x00, 0xD1Eu << 12);   // CTRL.ENABLE = DISABLE
+    s = mem.read_word(status).value;
+    CHECK((s & (1u << 31)) == 0);
+    CHECK((s & (1u << 12)) == 0);
+}
+
+TEST_CASE("ROSC password-guards FREQA/FREQB and latches BADWRITE (w1c)") {
+    Memory mem;
+    Rosc rosc;
+    REQUIRE(rosc.attach(mem));
+    const std::uint32_t status = Rosc::kBase + 0x18;
+
+    mem.write_word(Rosc::kBase + 0x04, 0x00001111u);            // no password
+    CHECK((mem.read_word(status).value & (1u << 24)) != 0);     // BADWRITE
+    CHECK(mem.read_word(Rosc::kBase + 0x04).value == 0u);       // rejected
+
+    mem.write_word(status, 1u << 24);                           // write-1-clear
+    CHECK((mem.read_word(status).value & (1u << 24)) == 0);
+
+    mem.write_word(Rosc::kBase + 0x04, 0x96960055u);            // correct password
+    CHECK(mem.read_word(Rosc::kBase + 0x04).value == 0x0055u);
+    CHECK((mem.read_word(status).value & (1u << 24)) == 0);
+}
+
+TEST_CASE("ROSC RANDOMBIT toggles and DIV round-trips") {
+    Memory mem;
+    Rosc rosc;
+    REQUIRE(rosc.attach(mem));
+    const std::uint32_t a = mem.read_word(Rosc::kBase + 0x1C).value & 1u;
+    const std::uint32_t b = mem.read_word(Rosc::kBase + 0x1C).value & 1u;
+    CHECK(a != b);
+    mem.write_word(Rosc::kBase + 0x10, 0xAA0u + 8u);
+    CHECK(mem.read_word(Rosc::kBase + 0x10).value == 0xAA8u);
+}
+
 TEST_CASE("clock-tree peripherals honour the atomic SET alias") {
     Memory mem;
     Clocks clk;

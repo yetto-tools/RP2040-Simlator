@@ -111,6 +111,7 @@ private:
     PadsBank0 pads_{gpio_};
     Rtc rtc_{cpu_};
     Xosc xosc_;
+    Rosc rosc_;
     Pll pll_sys_{Pll::kSysBase};
     Pll pll_usb_{Pll::kUsbBase};
     Clocks clocks_;
