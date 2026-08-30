@@ -145,7 +145,9 @@ Week 12:    PHASE 9 - Documentation & Release
       event, SEV sets the event on both cores, exception entry is a wake event.
       `Simulator::run` keeps time advancing through a sleep so a peripheral IRQ
       can wake it (`ExecStatus::WaitingForInterrupt` is not a stop)
-- [ ] SYSRESETREQ handling; SLEEPONEXIT / SLEEPDEEP
+- [x] AIRCR.SYSRESETREQ (VECTKEY-guarded) -> system-reset hook; the Simulator
+      resets both cores and stops core1
+- [ ] SLEEPONEXIT / SLEEPDEEP
 - **Tests**: test_exceptions (87), test_scs (81), test_cpu_exec WFI/WFE/SEV
 - **Effort**: 15 hours
 - **Priority**: HIGH

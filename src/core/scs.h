@@ -10,6 +10,7 @@
 #define RP2040_CORE_SCS_H
 
 #include <cstdint>
+#include <functional>
 
 #include "core/bus.h"
 #include "core/cpu.h"
@@ -38,6 +39,10 @@ public:
     // Advance the SysTick counter by `cycles` core clocks.
     void on_cycles(std::uint64_t cycles);
 
+    // Invoked when firmware writes AIRCR.SYSRESETREQ. If unset, the owning
+    // Cpu is reset directly.
+    void on_system_reset(std::function<void()> cb) { system_reset_cb_ = std::move(cb); }
+
     // Test/inspection helpers.
     std::uint32_t systick_cvr() const { return syst_cvr_ & 0xFFFFFFu; }
     bool systick_countflag() const { return (syst_csr_ & (1u << 16)) != 0; }
@@ -54,6 +59,7 @@ private:
     std::uint32_t syst_rvr_ = 0;   // 24-bit reload
     std::uint32_t syst_cvr_ = 0;   // 24-bit current
     std::uint32_t scr_ = 0;        // SLEEPONEXIT / SLEEPDEEP / SEVONPEND
+    std::function<void()> system_reset_cb_;
 };
 
 }  // namespace rp2040

@@ -38,6 +38,11 @@ Simulator::Simulator() {
     pll_usb_.attach(mem_);
     clocks_.attach(mem_);
     watchdog_.on_reset([this] { cpu_.reset(); });
+    scs_.on_system_reset([this] {
+        cpu_.reset();
+        cpu1_.reset();
+        core1_running_ = false;
+    });
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
     pio0_regs_.connect_nvic(&cpu_, PioRegisters::kPio0Irq0);

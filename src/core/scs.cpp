@@ -142,7 +142,10 @@ BusStatus Scs::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
             return BusStatus::Ok;
         case kAIRCR:
             if ((value & 0xFFFF0000u) != kAircrVectKey) return BusStatus::Ok;  // bad key
-            // SYSRESETREQ (bit 2) would reset the system - not modelled yet.
+            if ((value & (1u << 2)) != 0) {                // SYSRESETREQ
+                if (system_reset_cb_) system_reset_cb_();
+                else cpu_.reset();
+            }
             return BusStatus::Ok;
         case kSCR:
             scr_ = value & 0x16u;

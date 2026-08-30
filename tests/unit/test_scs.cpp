@@ -36,6 +36,20 @@ TEST_CASE_FIXTURE(ScsFix, "PPB region is now routed to the SCS") {
     CHECK(rd(0xD00) == Scs::kCpuid);  // CPUID = Cortex-M0+
 }
 
+TEST_CASE_FIXTURE(ScsFix, "AIRCR.SYSRESETREQ invokes the system-reset hook (with the right key)") {
+    int resets = 0;
+    scs.on_system_reset([&] { ++resets; });
+
+    wr(0xD0C, 0x00000004u);          // SYSRESETREQ set, but VECTKEY missing
+    CHECK(resets == 0);
+
+    wr(0xD0C, 0x05FA0004u);          // VECTKEY | SYSRESETREQ
+    CHECK(resets == 1);
+
+    wr(0xD0C, 0x05FA0000u);          // key ok, bit clear
+    CHECK(resets == 1);
+}
+
 TEST_CASE_FIXTURE(ScsFix, "VTOR read/write mirrors the CPU") {
     wr(0xD08, 0x20001000u);
     CHECK(cpu.vtor() == 0x20001000u);
