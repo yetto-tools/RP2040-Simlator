@@ -28,6 +28,7 @@ Simulator::Simulator() {
     i2c0_.attach(mem_);
     i2c1_.attach(mem_);
     resets_.attach(mem_);
+    sysinfo_.attach(mem_);
     watchdog_.attach(mem_);
     pads_.attach(mem_);
     rtc_.attach(mem_);

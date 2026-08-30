@@ -19,6 +19,7 @@
 #include "peripherals/rtc.h"
 #include "peripherals/clocks.h"
 #include "peripherals/resets.h"
+#include "peripherals/sysinfo.h"
 #include "peripherals/watchdog.h"
 #include "peripherals/dma.h"
 #include "peripherals/gpio.h"
@@ -107,6 +108,7 @@ private:
     I2c i2c0_{cpu_, I2c::kI2c0Base, I2c::kI2c0Irq};
     I2c i2c1_{cpu_, I2c::kI2c1Base, I2c::kI2c1Irq};
     Resets resets_;
+    Sysinfo sysinfo_;
     Watchdog watchdog_;
     PadsBank0 pads_{gpio_};
     Rtc rtc_{cpu_};
