@@ -80,7 +80,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARCHITECTURE.md 1.1-1.2, 1.5 (rewritten for ARMv6-M, not Thumb-2)
 - **Files**: `src/core/registers.{h,cpp}`
 
-#### P1.2: Thumb Instruction Decoder (ARMv6-M)  [IN PROGRESS]
+#### P1.2: Thumb Instruction Decoder + Executor (ARMv6-M)  [DONE]
 - [x] Decoder framework: `DecodedInstr`, `Mnemonic`, `is_32bit_thumb()`
 - [x] A5.2.1 shift/add/sub/mov/cmp (incl. LSL #0 -> MOVS reg)
 - [x] A5.2.2 data processing (16 ops, AND..MVN, incl. RSB/MUL forms)
@@ -94,9 +94,11 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Execute stage - computational core: data processing, shifts, moves,
       compares, MUL, high-reg ADD/MOV/CMP, ADR/ADD-SUB SP, SXT/UXT, REV*
 - [x] Execute stage - branches: B, Bcc, BL, BX, BLX; MRS/MSR/CPS; BKPT/SVC
-- [x] `Cpu::step()` fetch-decode-execute loop (runs real loops)
-- [ ] Execute stage - memory: LDR/STR/LDRB/LDRH/... , PUSH/POP, LDM/STM -> next
-- **Tests**: test_thumb_decode (219 asserts), test_alu (45), test_cpu_exec (86)
+- [x] `Cpu::step()` fetch-decode-execute loop (runs real loops + subroutines)
+- [x] Execute stage - memory: LDR/STR/LDRB/LDRH/LDRSB/LDRSH (literal, reg,
+      imm, SP-rel), PUSH/POP (incl. POP{PC}), LDM/STM with writeback rules;
+      bus faults -> ExecStatus::MemFault; unaligned word/half -> fault
+- **Tests**: test_thumb_decode (219), test_alu (45), test_cpu_exec (137)
 - **Effort**: 60 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P1.1

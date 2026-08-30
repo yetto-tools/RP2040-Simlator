@@ -3,10 +3,9 @@
 // Ties the decoder (thumb_isa.h), the register file (registers.h) and the bus
 // (memory.h) together: fetch -> decode -> execute one instruction per step().
 //
-// This unit currently covers the computational core (data processing,
-// shifts, moves, compares, PC/SP-relative address, and all branches).
-// Memory-access instructions (LDR/STR/PUSH/POP/LDM/STM) report
-// ExecStatus::Unimplemented until the next slice lands.
+// Covers the computational core (data processing, shifts, moves, compares,
+// PC/SP-relative address), all branches, and the load/store instructions
+// (LDR/STR family, PUSH/POP, LDM/STM).
 #ifndef RP2040_CORE_CPU_H
 #define RP2040_CORE_CPU_H
 
@@ -51,6 +50,7 @@ private:
 
     ExecStatus exec_data(const DecodedInstr& d, std::uint32_t instr_pc);
     ExecStatus exec_branch(const DecodedInstr& d, std::uint32_t instr_pc);
+    ExecStatus exec_load_store(const DecodedInstr& d, std::uint32_t instr_pc);
 
     RegisterFile& regs_;
     Memory& mem_;

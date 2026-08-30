@@ -17,6 +17,15 @@ std::uint32_t sxt16(std::uint32_t v) {
         static_cast<std::int16_t>(static_cast<std::uint16_t>(v))));
 }
 
+unsigned popcount16(std::uint16_t v) {
+    unsigned c = 0;
+    while (v != 0) {
+        c += (v & 1u);
+        v = static_cast<std::uint16_t>(v >> 1);
+    }
+    return c;
+}
+
 }  // namespace
 
 std::uint32_t Cpu::read_reg(unsigned n, std::uint32_t instr_pc) const {
@@ -128,7 +137,6 @@ ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {
             return ExecStatus::Ok;
         }
 
-        // Memory-access instructions: next slice.
         case Mnemonic::LDR_lit:
         case Mnemonic::STR_reg:  case Mnemonic::STRH_reg: case Mnemonic::STRB_reg:
         case Mnemonic::LDRSB_reg: case Mnemonic::LDR_reg: case Mnemonic::LDRH_reg:
@@ -138,7 +146,7 @@ ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {
         case Mnemonic::STR_imm_sp: case Mnemonic::LDR_imm_sp:
         case Mnemonic::PUSH: case Mnemonic::POP:
         case Mnemonic::STM:  case Mnemonic::LDM:
-            return ExecStatus::Unimplemented;
+            return exec_load_store(d, instr_pc);
 
         default:
             return exec_data(d, instr_pc);
@@ -358,6 +366,161 @@ ExecStatus Cpu::exec_data(const DecodedInstr& d, std::uint32_t instr_pc) {
         case Mnemonic::REVSH: {
             const std::uint32_t v = rv(d.rm);
             write_reg(d.rd, sxt16(((v & 0xFFu) << 8) | ((v >> 8) & 0xFFu)));
+            return ExecStatus::Ok;
+        }
+
+        default:
+            return ExecStatus::Unimplemented;
+    }
+}
+
+ExecStatus Cpu::exec_load_store(const DecodedInstr& d, std::uint32_t instr_pc) {
+    auto rv = [&](unsigned n) { return read_reg(n, instr_pc); };
+
+    switch (d.op) {
+        // --- word loads / stores -------------------------------------------
+        case Mnemonic::LDR_lit: {
+            const std::uint32_t addr = ((instr_pc + 4u) & ~std::uint32_t{3}) + d.imm;
+            const BusResult<std::uint32_t> r = mem_.read_word(addr);
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, r.value);
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::LDR_reg:
+        case Mnemonic::LDR_imm:
+        case Mnemonic::LDR_imm_sp: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::LDR_reg ? rv(d.rm) : d.imm);
+            const BusResult<std::uint32_t> r = mem_.read_word(addr);
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, r.value);
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::STR_reg:
+        case Mnemonic::STR_imm:
+        case Mnemonic::STR_imm_sp: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::STR_reg ? rv(d.rm) : d.imm);
+            if (mem_.write_word(addr, rv(d.rt)) != BusStatus::Ok)
+                return ExecStatus::MemFault;
+            return ExecStatus::Ok;
+        }
+
+        // --- halfword ----------------------------------------------------
+        case Mnemonic::LDRH_reg:
+        case Mnemonic::LDRH_imm: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::LDRH_reg ? rv(d.rm) : d.imm);
+            const BusResult<std::uint16_t> r = mem_.read_half(addr);
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, r.value);  // zero-extended
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::LDRSH_reg: {
+            const BusResult<std::uint16_t> r = mem_.read_half(rv(d.rn) + rv(d.rm));
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, sxt16(r.value));
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::STRH_reg:
+        case Mnemonic::STRH_imm: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::STRH_reg ? rv(d.rm) : d.imm);
+            if (mem_.write_half(addr, static_cast<std::uint16_t>(rv(d.rt))) != BusStatus::Ok)
+                return ExecStatus::MemFault;
+            return ExecStatus::Ok;
+        }
+
+        // --- byte ------------------------------------------------------
+        case Mnemonic::LDRB_reg:
+        case Mnemonic::LDRB_imm: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::LDRB_reg ? rv(d.rm) : d.imm);
+            const BusResult<std::uint8_t> r = mem_.read_byte(addr);
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, r.value);  // zero-extended
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::LDRSB_reg: {
+            const BusResult<std::uint8_t> r = mem_.read_byte(rv(d.rn) + rv(d.rm));
+            if (!r.ok()) return ExecStatus::MemFault;
+            write_reg(d.rt, sxt8(r.value));
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::STRB_reg:
+        case Mnemonic::STRB_imm: {
+            const std::uint32_t addr =
+                rv(d.rn) + (d.op == Mnemonic::STRB_reg ? rv(d.rm) : d.imm);
+            if (mem_.write_byte(addr, static_cast<std::uint8_t>(rv(d.rt))) != BusStatus::Ok)
+                return ExecStatus::MemFault;
+            return ExecStatus::Ok;
+        }
+
+        // --- stack push / pop ------------------------------------------
+        case Mnemonic::PUSH: {
+            const unsigned n = popcount16(d.register_list);
+            if (n == 0) return ExecStatus::Undefined;  // UNPREDICTABLE
+            const std::uint32_t sp = regs_.sp();
+            std::uint32_t addr = sp - 4u * n;
+            for (unsigned i = 0; i < 16; ++i) {
+                if ((d.register_list & (1u << i)) == 0) continue;
+                if (mem_.write_word(addr, read_reg(i, instr_pc)) != BusStatus::Ok)
+                    return ExecStatus::MemFault;
+                addr += 4u;
+            }
+            regs_.set_sp(sp - 4u * n);
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::POP: {
+            const unsigned n = popcount16(d.register_list);
+            if (n == 0) return ExecStatus::Undefined;
+            const std::uint32_t sp = regs_.sp();
+            std::uint32_t addr = sp;
+            for (unsigned i = 0; i < 15; ++i) {  // r0..r14
+                if ((d.register_list & (1u << i)) == 0) continue;
+                const BusResult<std::uint32_t> r = mem_.read_word(addr);
+                if (!r.ok()) return ExecStatus::MemFault;
+                regs_.set(i, r.value);
+                addr += 4u;
+            }
+            if ((d.register_list & (1u << 15)) != 0) {  // POP {..., PC}
+                const BusResult<std::uint32_t> r = mem_.read_word(addr);
+                if (!r.ok()) return ExecStatus::MemFault;
+                regs_.set_thumb((r.value & 1u) != 0);      // LoadWritePC == BXWritePC
+                regs_.set_pc(r.value & ~std::uint32_t{1});
+            }
+            regs_.set_sp(sp + 4u * n);
+            return ExecStatus::Ok;
+        }
+
+        // --- load / store multiple (16-bit: r0..r7 only) -----------------
+        case Mnemonic::STM: {
+            const unsigned n = popcount16(d.register_list);
+            if (n == 0) return ExecStatus::Undefined;
+            const std::uint32_t base = rv(d.rn);
+            std::uint32_t addr = base;
+            for (unsigned i = 0; i < 8; ++i) {
+                if ((d.register_list & (1u << i)) == 0) continue;
+                if (mem_.write_word(addr, regs_.get(i)) != BusStatus::Ok)
+                    return ExecStatus::MemFault;
+                addr += 4u;
+            }
+            if (d.wback) regs_.set(d.rn, base + 4u * n);
+            return ExecStatus::Ok;
+        }
+        case Mnemonic::LDM: {
+            const unsigned n = popcount16(d.register_list);
+            if (n == 0) return ExecStatus::Undefined;
+            const std::uint32_t base = rv(d.rn);
+            std::uint32_t addr = base;
+            for (unsigned i = 0; i < 8; ++i) {
+                if ((d.register_list & (1u << i)) == 0) continue;
+                const BusResult<std::uint32_t> r = mem_.read_word(addr);
+                if (!r.ok()) return ExecStatus::MemFault;
+                regs_.set(i, r.value);
+                addr += 4u;
+            }
+            if (d.wback) regs_.set(d.rn, base + 4u * n);
             return ExecStatus::Ok;
         }
 

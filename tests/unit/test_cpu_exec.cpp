@@ -263,3 +263,158 @@ TEST_CASE_FIXTURE(CpuFix, "step() reports UNDEFINED for a v7-M-only encoding") {
     program({0xBF08});  // ITE EQ -> not in ARMv6-M
     CHECK(cpu.step() == ExecStatus::Undefined);
 }
+
+// --- memory-access slice -------------------------------------------------
+
+namespace {
+constexpr std::uint32_t kData = 0x20001000u;  // scratch data area in SRAM
+}
+
+TEST_CASE_FIXTURE(CpuFix, "word LDR/STR: immediate, register offset, SP-relative") {
+    regs.set(1, kData);
+    regs.set(0, 0xDEADBEEFu);
+    CHECK(run_one(cpu, regs, 0x6008) == ExecStatus::Ok);  // str r0, [r1, #0]
+    CHECK(mem.read_word(kData).value == 0xDEADBEEFu);
+    CHECK(run_one(cpu, regs, 0x680A) == ExecStatus::Ok);  // ldr r2, [r1, #0]
+    CHECK(regs.get(2) == 0xDEADBEEFu);
+
+    regs.set(2, 4);
+    regs.set(0, 0x11112222u);
+    run_one(cpu, regs, 0x5088);                            // str r0, [r1, r2]
+    run_one(cpu, regs, 0x588B);                            // ldr r3, [r1, r2]
+    CHECK(regs.get(3) == 0x11112222u);
+    CHECK(mem.read_word(kData + 4).value == 0x11112222u);
+
+    regs.set_msp(0x20002000u);
+    regs.set(0, 0xCAFEF00Du);
+    run_one(cpu, regs, 0x9001);                            // str r0, [sp, #4]
+    run_one(cpu, regs, 0x9901);                            // ldr r1, [sp, #4]
+    CHECK(regs.get(1) == 0xCAFEF00Du);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "LDR literal reads from Align(PC,4) + imm") {
+    program({0x4801 /* ldr r0, [pc, #4] */, 0xBF00 /* nop */,
+             0x0000, 0x0000 /* literal at 0x08 */});
+    const std::array<std::uint8_t, 4> lit{0x0D, 0xF0, 0xAD, 0x0B};
+    REQUIRE(mem.load(kBase + 8, lit.data(), lit.size()));
+    CHECK(cpu.step() == ExecStatus::Ok);
+    CHECK(regs.get(0) == 0x0BADF00Du);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "byte and halfword loads zero- or sign-extend") {
+    regs.set(1, kData);
+    const std::array<std::uint8_t, 4> bytes{0x80, 0x81, 0x00, 0x00};
+    REQUIRE(mem.load(kData, bytes.data(), bytes.size()));
+
+    run_one(cpu, regs, 0x780A);  // ldrb r2, [r1, #0]
+    CHECK(regs.get(2) == 0x80);
+    regs.set(0, 0);
+    run_one(cpu, regs, 0x560A);  // ldrsb r2, [r1, r0]
+    CHECK(regs.get(2) == 0xFFFFFF80u);
+
+    run_one(cpu, regs, 0x880A);  // ldrh r2, [r1, #0]
+    CHECK(regs.get(2) == 0x8180u);
+    run_one(cpu, regs, 0x5E0A);  // ldrsh r2, [r1, r0]
+    CHECK(regs.get(2) == 0xFFFF8180u);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "byte/halfword stores only touch their width") {
+    regs.set(1, kData);
+    REQUIRE(mem.write_word(kData, 0xFFFFFFFFu) == BusStatus::Ok);
+    regs.set(0, 0x1234AB5Au);
+
+    run_one(cpu, regs, 0x7008);  // strb r0, [r1, #0]
+    CHECK(mem.read_word(kData).value == 0xFFFFFF5Au);
+    run_one(cpu, regs, 0x8008);  // strh r0, [r1, #0]
+    CHECK(mem.read_word(kData).value == 0xFFFFAB5Au);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "unaligned word/halfword access faults") {
+    regs.set(1, kData + 1);
+    CHECK(run_one(cpu, regs, 0x680A) == ExecStatus::MemFault);  // ldr, addr%4 != 0
+    CHECK(run_one(cpu, regs, 0x880A) == ExecStatus::MemFault);  // ldrh, addr odd
+    CHECK(run_one(cpu, regs, 0x780A) == ExecStatus::Ok);        // ldrb: any alignment
+}
+
+TEST_CASE_FIXTURE(CpuFix, "store into the XIP flash window faults") {
+    regs.set(1, 0x10000000u);
+    regs.set(0, 1);
+    CHECK(run_one(cpu, regs, 0x6008) == ExecStatus::MemFault);  // str r0, [r1, #0]
+}
+
+TEST_CASE_FIXTURE(CpuFix, "PUSH / POP round-trip and adjust SP") {
+    regs.set_msp(0x20002000u);
+    regs.set(4, 0xAAAA0001u);
+    regs.set(5, 0xBBBB0002u);
+    regs.set(14, 0x20000123u);
+
+    run_one(cpu, regs, 0xB530);  // push {r4, r5, lr}
+    CHECK(regs.sp() == 0x20002000u - 12);
+    CHECK(mem.read_word(0x20001FF4u).value == 0xAAAA0001u);  // lowest reg, lowest addr
+    CHECK(mem.read_word(0x20001FFCu).value == 0x20000123u);  // lr on top
+
+    regs.set(4, 0);
+    regs.set(5, 0);
+    run_one(cpu, regs, 0xBC30);  // pop {r4, r5}
+    CHECK(regs.get(4) == 0xAAAA0001u);
+    CHECK(regs.get(5) == 0xBBBB0002u);
+    CHECK(regs.sp() == 0x20002000u - 4);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "POP {..., PC} branches with the Thumb bit") {
+    regs.set_msp(0x20001FFCu);
+    REQUIRE(mem.write_word(0x20001FFCu, 0x20000401u) == BusStatus::Ok);
+    regs.set_pc(kBase + 2);
+    CHECK(cpu.execute(decode_thumb16(0xBD00 /* pop {pc} */), kBase) == ExecStatus::Ok);
+    CHECK(regs.pc() == 0x20000400u);
+    CHECK(regs.thumb());
+    CHECK(regs.sp() == 0x20002000u);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "STMIA / LDMIA transfer in register order and write back") {
+    regs.set(0, kData);
+    regs.set(1, 0x1000);
+    regs.set(2, 0x2000);
+    regs.set(3, 0x3000);
+    run_one(cpu, regs, 0xC00E);  // stmia r0!, {r1, r2, r3}
+    CHECK(regs.get(0) == kData + 12);
+    CHECK(mem.read_word(kData + 0).value == 0x1000);
+    CHECK(mem.read_word(kData + 8).value == 0x3000);
+
+    regs.set(4, kData);
+    run_one(cpu, regs, 0xCC07);  // ldmia r4!, {r0, r1, r2}
+    CHECK(regs.get(0) == 0x1000);
+    CHECK(regs.get(2) == 0x3000);
+    CHECK(regs.get(4) == kData + 12);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "LDMIA with base in the list does not write back") {
+    regs.set(0, kData);
+    const std::array<std::uint8_t, 8> d8{1, 0, 0, 0, 2, 0, 0, 0};
+    REQUIRE(mem.load(kData, d8.data(), d8.size()));
+    run_one(cpu, regs, 0xC803);  // ldmia r0, {r0, r1}
+    CHECK(regs.get(0) == 1);     // overwritten by the load, not the writeback
+    CHECK(regs.get(1) == 2);
+}
+
+TEST_CASE_FIXTURE(CpuFix, "step() runs a subroutine call/return") {
+    // main:  bl func ; b .
+    // func:  push {lr} ; movs r0,#7 ; pop {pc}
+    program({
+        0xF000, 0xF801,  // 0x00: bl 0x06 (offset: (0x00+4)+2 = 0x06)
+        0xE7FE,          // 0x04: b .
+        0xB500,          // 0x06: push {lr}
+        0x2007,          // 0x08: movs r0, #7
+        0xBD00,          // 0x0A: pop {pc}
+    });
+    regs.set_msp(0x20002000u);
+
+    int guard = 50;
+    while (guard-- > 0) {
+        REQUIRE(cpu.step() == ExecStatus::Ok);
+        if (regs.pc() == kBase + 0x04) break;
+    }
+    CHECK(regs.get(0) == 7);
+    CHECK(regs.pc() == kBase + 0x04);
+    CHECK(regs.sp() == 0x20002000u);   // balanced
+}
