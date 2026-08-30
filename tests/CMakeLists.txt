@@ -26,6 +26,8 @@ rp2040_add_test(test_timing unit/test_timing.cpp)
 rp2040_add_test(test_exceptions unit/test_exceptions.cpp)
 rp2040_add_test(test_scs unit/test_scs.cpp)
 rp2040_add_test(test_elf_loader unit/test_elf_loader.cpp)
+rp2040_add_test(test_pio_decode unit/test_pio_decode.cpp)
+rp2040_add_test(test_pio_sm unit/test_pio_sm.cpp)
 
 # ---------------------------------------------------------------------------
 # Integration: build a real Cortex-M0+ firmware fixture with the ARM

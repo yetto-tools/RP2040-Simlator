@@ -166,66 +166,52 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 2: PIO (Programmable I/O) (Weeks 3-5)
 
-#### P2.1: PIO Block Architecture
-- [ ] 2 PIO blocks (PIO0, PIO1)
-- [ ] 4 State Machines per block
-- [ ] Shared program memory (32 instructions)
-- [ ] State machine registers (X, Y, OSR, ISR, PC)
-- [ ] Clock divider (1-65536)
-- **Tests**: 10+ architecture tests
+#### P2.1: PIO Block Architecture  [IN PROGRESS]
+- [x] Instruction decoder for all 9 PIO ops (`include/pio_isa.h`,
+      `src/pio/pio_decode.cpp`)
+- [x] State-machine registers X, Y, OSR, ISR, PC + shift counters
+- [x] 4-deep TX/RX FIFO with join support (`src/pio/pio_fifo.h`)
+- [x] `StateMachine::tick()` - one instruction per post-divider clock,
+      instruction wrapping (WRAP_TOP/BOTTOM), delay field
+- [ ] 2 PIO blocks x 4 SMs sharing a 32-word program + block IRQ register
+- [ ] Clock divider (16.8 fixed point) + parallel scheduling
+- **Tests**: test_pio_decode (10 cases), test_pio_sm (18 cases)
 - **Effort**: 30 hours
 - **Priority**: CRITICAL (40% of Phase 2)
 - **Dependencies**: P1.1, P1.3
+- **Design**: RP2040 datasheet 3.2-3.5
+- **Files**: `include/pio_isa.h`, `src/pio/{pio_decode,state_machine,pio_fifo}`
 
-#### P2.2: PIO ISA - JMP, WAIT, IN, OUT
-- [ ] JMP instruction with conditions
-  - [ ] always, !X, X--, !Y, Y--, X!=Y, PIN, !PIN
-- [ ] WAIT instruction (GPIO level, IRQ)
-- [ ] IN instruction (PINS, X, Y, NULL, ISR)
-  - [ ] Bit shifting
-  - [ ] ISR accumulation
-- [ ] OUT instruction (PINS, X, Y, NULL, PC, ISR)
-  - [ ] Bit shifting from OSR
-  - [ ] Destination routing
-- **Tests**: 40+ (one per condition/source)
+#### P2.2: PIO ISA - JMP, WAIT, IN, OUT  [IN PROGRESS]
+- [x] JMP: always, !X, X-- (unconditional decrement), !Y, Y--, X!=Y, !OSRE
+- [ ] JMP PIN (needs the GPIO model, P3.1)
+- [ ] WAIT (GPIO level / PIN / IRQ) - needs GPIO + block IRQ register
+- [x] IN: X, Y, NULL, ISR, OSR sources; left/right shift; ISR accumulation
+- [x] OUT: X, Y, NULL, PC, ISR destinations; left/right shift from OSR
+- [ ] IN/OUT PINS + OUT PINDIRS/EXEC (need GPIO / EXEC)
+- **Tests**: covered by test_pio_sm
 - **Effort**: 45 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P2.1
 
-#### P2.3: PIO ISA - PUSH, PULL, MOV, SET, IRQ
-- [ ] PUSH instruction
-  - [ ] iffull flag
-  - [ ] block/non-block
-  - [ ] FIFO push
-- [ ] PULL instruction
-  - [ ] ifempty flag
-  - [ ] block/non-block
-  - [ ] FIFO pull
-- [ ] MOV instruction
-  - [ ] Register moves
-  - [ ] Operations (none, invert, bitrev, shift)
-- [ ] SET instruction (PINS, X, Y)
-- [ ] IRQ instruction
-  - [ ] Set/clear IRQ
-  - [ ] Wait mode
-- **Tests**: 30+ (each instruction variant)
+#### P2.3: PIO ISA - PUSH, PULL, MOV, SET, IRQ  [IN PROGRESS]
+- [x] PUSH: iffull, block/non-block (data-lost on non-block + full), ISR clear
+- [x] PULL: ifempty, block/non-block (OSR <- X on non-block + empty), autopull
+- [x] autopush / autopull with threshold + mid-instruction stall + resume
+- [x] MOV: none / invert / bit-reverse; X/Y/ISR/OSR/NULL
+- [x] SET: X, Y (PINS/PINDIRS need GPIO)
+- [ ] IRQ set/clear/wait + MOV STATUS + MOV PINS / EXEC
+- **Tests**: covered by test_pio_sm
 - **Effort**: 35 hours
-- **Priority**: CRITICAL
+
 - **Dependencies**: P2.1, P2.2
 
-#### P2.4: FIFO Management
-- [ ] TX FIFO (CPU  SM)
-  - [ ] 4-deep queue per SM
-  - [ ] Full flag
-  - [ ] Empty flag
-  - [ ] Level counting
-- [ ] RX FIFO (SM  CPU)
-  - [ ] 4-deep queue per SM
-  - [ ] Data pushing
-  - [ ] CPU reading
-- [ ] Flow control (blocking vs non-blocking)
-- [ ] Status registers
-- **Tests**: 15+ FIFO scenarios
+#### P2.4: FIFO Management  [IN PROGRESS]
+- [x] TX / RX FIFO: 4-deep 32-bit ring, full/empty/level, join to 8-deep
+      (`src/pio/pio_fifo.h`)
+- [x] Flow control: blocking vs non-blocking PUSH/PULL wired into the SM
+- [ ] CPU-facing TXF/RXF register windows + FSTAT/FLEVEL (comes with P2.7)
+- **Tests**: covered by test_pio_sm
 - **Effort**: 20 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P2.1
