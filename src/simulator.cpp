@@ -18,6 +18,8 @@ Simulator::Simulator() {
     i2c1_.attach(mem_);
     resets_.attach(mem_);
     watchdog_.attach(mem_);
+    pads_.attach(mem_);
+    rtc_.attach(mem_);
     xosc_.attach(mem_);
     pll_sys_.attach(mem_);
     pll_usb_.attach(mem_);
@@ -57,6 +59,7 @@ ExecStatus Simulator::step() {
     adc_.on_cycles(spent);
     pwm_.on_cycles(spent);
     watchdog_.on_cycles(spent);
+    rtc_.on_cycles(spent);
     pio0_regs_.poll_interrupts();
     pio1_regs_.poll_interrupts();
     return status;

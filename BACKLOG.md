@@ -277,7 +277,7 @@ Week 12:    PHASE 9 - Documentation & Release
       GPIO_OUT/OE with SET/CLR/XOR atomic aliases; memory decoder routes SIO
 - [x] IO_BANK0 (`src/peripherals/iobank0.{h,cpp}`) @ 0x40014000: GPIOx_CTRL
       FUNCSEL, GPIOx_STATUS level bits
-- [ ] PADS_BANK0 register window (pulls/drive/schmitt via MMIO)
+- [x] PADS_BANK0 register window (pulls -> Gpio; drive/schmitt stored) -- see P3.1b
 - [ ] Slew / drive strength / glitch filter (behavioural, low priority)
 - **Tests**: `tests/unit/test_gpio.cpp` (7 cases)
 - **Effort**: 25 hours
@@ -462,12 +462,19 @@ Week 12:    PHASE 9 - Documentation & Release
 > (0xD0000000) has its own SET/CLR/XOR *registers* rather than address
 > aliases, already handled.
 
-#### P5.4: Real-Time Clock (RTC)
-- [ ] Date/time registers
-- [ ] Alarm functionality
-- [ ] (Optional for Phase 1)
-- **Effort**: 10 hours
-- **Priority**: LOW
+#### P5.4: Real-Time Clock (RTC)  [DONE (functional)]
+- [x] `Rtc` (`src/peripherals/rtc.{h,cpp}`) @ 0x4005C000, AtomicPeripheral
+- [x] SETUP_0/1 + CTRL.LOAD set the calendar; RTC_0/RTC_1 read it back
+- [x] on_cycles() advances one second per (CLKDIV_M1+1) RTC ticks; full
+      MM/YYYY roll-over incl. leap years
+- [x] Field-masked alarm (IRQ_SETUP_0/1 MATCH bits) -> rising-edge RTC_IRQ
+      (IRQ25); INTR w1c
+- **Tests**: `tests/unit/test_rtc.cpp` (4 cases)
+
+#### P3.1b: PADS_BANK0  [DONE (functional)]
+- [x] `PadsBank0` (`src/peripherals/padsbank0.{h,cpp}`) @ 0x4001C000,
+      AtomicPeripheral; PUE/PDE -> Gpio::set_pulls, other pad bits stored
+- **Tests**: `tests/unit/test_padsbank0.cpp` (2 cases)
 - **Dependencies**: P1.3
 
 ---

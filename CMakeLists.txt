@@ -59,6 +59,8 @@ add_library(rp2040_core STATIC
     src/peripherals/uart.cpp
     src/peripherals/adc.cpp
     src/peripherals/clocks.cpp
+    src/peripherals/padsbank0.cpp
+    src/peripherals/rtc.cpp
     src/peripherals/dma.cpp
     src/peripherals/i2c.cpp
     src/peripherals/resets.cpp

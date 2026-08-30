@@ -16,6 +16,7 @@
 #include "core/scs.h"
 #include "loaders/elf_loader.h"
 #include "peripherals/adc.h"
+#include "peripherals/rtc.h"
 #include "peripherals/clocks.h"
 #include "peripherals/resets.h"
 #include "peripherals/watchdog.h"
@@ -23,6 +24,7 @@
 #include "peripherals/gpio.h"
 #include "peripherals/i2c.h"
 #include "peripherals/iobank0.h"
+#include "peripherals/padsbank0.h"
 #include "peripherals/pwm.h"
 #include "peripherals/sio.h"
 #include "peripherals/spi.h"
@@ -74,6 +76,7 @@ public:
     Pwm& pwm() { return pwm_; }
     I2c& i2c(unsigned n) { return n == 0 ? i2c0_ : i2c1_; }
     Watchdog& watchdog() { return watchdog_; }
+    Rtc& rtc() { return rtc_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -96,6 +99,8 @@ private:
     I2c i2c1_{cpu_, I2c::kI2c1Base, I2c::kI2c1Irq};
     Resets resets_;
     Watchdog watchdog_;
+    PadsBank0 pads_{gpio_};
+    Rtc rtc_{cpu_};
     Xosc xosc_;
     Pll pll_sys_{Pll::kSysBase};
     Pll pll_usb_{Pll::kUsbBase};
