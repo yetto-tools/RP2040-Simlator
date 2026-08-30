@@ -1,6 +1,7 @@
 #include "core/cpu.h"
 
 #include "core/alu.h"
+#include "core/scs.h"
 #include "core/timing.h"
 
 namespace rp2040 {
@@ -45,6 +46,7 @@ void Cpu::write_reg(unsigned n, std::uint32_t value) {
 void Cpu::reset() {
     regs_.reset();
     pending_ = 0;
+    irq_enabled_ = 0;
     const BusResult<std::uint32_t> sp = mem_.read_word(vtor_);
     const BusResult<std::uint32_t> pc = mem_.read_word(vtor_ + 4u);
     if (sp.ok()) regs_.set_msp(sp.value);
@@ -89,7 +91,9 @@ ExecStatus Cpu::step() {
             break;
     }
     const bool took_branch = regs_.pc() != seq_pc;
-    cycles_ += instruction_cycles(d, took_branch, reg_count);
+    const unsigned spent = instruction_cycles(d, took_branch, reg_count);
+    cycles_ += spent;
+    if (scs_ != nullptr) scs_->on_cycles(spent);
 
     // Synchronous exceptions raised by the instruction just executed.
     switch (status) {
@@ -113,6 +117,17 @@ void Cpu::set_exception_priority(unsigned exc, std::uint8_t raw) {
     if (exc < priority_.size()) priority_[exc] = raw;
 }
 
+void Cpu::set_irq_enabled(unsigned irq, bool en) {
+    if (irq >= static_cast<unsigned>(kNumRp2040Irqs)) return;
+    const std::uint32_t bit = 1u << irq;
+    if (en) irq_enabled_ |= bit; else irq_enabled_ &= ~bit;
+}
+
+bool Cpu::irq_enabled(unsigned irq) const {
+    return irq < static_cast<unsigned>(kNumRp2040Irqs) &&
+           (irq_enabled_ & (1u << irq)) != 0;
+}
+
 int Cpu::priority_of(unsigned exc) const {
     switch (exc) {
         case kExcNMI:       return kPriorityNMI;
@@ -134,6 +149,8 @@ int Cpu::highest_pending_exception() const {
     int best_prio = current_execution_priority();
     for (unsigned e = 2; e <= static_cast<unsigned>(kMaxException); ++e) {
         if ((pending_ & (1ull << e)) == 0) continue;
+        // An external interrupt is only eligible while its NVIC enable is set.
+        if (e >= kExcExternal0 && !irq_enabled(e - kExcExternal0)) continue;
         const int p = priority_of(e);
         if (regs_.primask() && p >= 0) continue;  // PRIMASK masks p >= 0
         if (p < best_prio) {

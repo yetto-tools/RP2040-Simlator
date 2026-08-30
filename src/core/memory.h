@@ -38,6 +38,8 @@ public:
     static constexpr Region kFlash{kFlashBase, kFlashSize};
     static constexpr Region kSram{kSramBase, kSramSize};
     static constexpr Region kRegisterSpace{0x40000000u, 0x20000000u};
+    // Private Peripheral Bus (SCS: SysTick, NVIC, SCB, debug).
+    static constexpr Region kPpb{0xE0000000u, 0x00100000u};
 
     Memory();
 

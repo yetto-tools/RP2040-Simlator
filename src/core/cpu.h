@@ -19,6 +19,8 @@
 
 namespace rp2040 {
 
+class Scs;  // System Control Space peripheral (src/core/scs.h)
+
 enum class ExecStatus {
     Ok,
     Unimplemented,        // valid encoding, executor slice not written yet
@@ -69,9 +71,21 @@ public:
     void clear_pending(unsigned exc) { pending_ &= ~(1ull << exc); }
     bool is_pending(unsigned exc) const { return (pending_ & (1ull << exc)) != 0; }
 
+    // NVIC per-IRQ enable (irq in [0, kNumRp2040Irqs)). A pending external
+    // interrupt is only delivered while enabled.
+    void set_irq_enabled(unsigned irq, bool en);
+    bool irq_enabled(unsigned irq) const;
+
+    // Attach the memory-mapped System Control Space (SysTick / NVIC / SCB).
+    // step() then advances SysTick by the cycles each instruction retired.
+    void set_scs(Scs* scs) { scs_ = scs; }
+
     // Priority of the code currently executing (256 = base/thread, no
     // exception active); PRIMASK raises it to 0.
     int current_execution_priority() const;
+
+    // Currently executing exception number (== IPSR; 0 in Thread mode).
+    unsigned current_exception() const { return regs_.exception_number(); }
 
     // Drive one exception entry directly (mainly for tests). `return_address`
     // is what the handler's frame will resume to.
@@ -95,7 +109,9 @@ private:
     Memory& mem_;
     std::uint64_t cycles_ = 0;
     std::uint32_t vtor_ = 0;
-    std::uint64_t pending_ = 0;   // bit e set => exception e pending
+    std::uint64_t pending_ = 0;      // bit e set => exception e pending
+    std::uint32_t irq_enabled_ = 0;  // NVIC enable, bit i => IRQ i
+    Scs* scs_ = nullptr;
     std::array<std::uint8_t, kExceptionTableEntries> priority_{};
     std::uint32_t svc_imm_ = 0;
     std::uint32_t bkpt_imm_ = 0;

@@ -40,7 +40,7 @@ std::uint8_t* Memory::backing(std::uint32_t addr, std::uint32_t n, bool& writabl
 }
 
 Memory::PeripheralMapping* Memory::find_peripheral(std::uint32_t addr, std::uint32_t n) {
-    if (!kRegisterSpace.contains(addr)) return nullptr;
+    if (!kRegisterSpace.contains(addr) && !kPpb.contains(addr)) return nullptr;
     for (auto& m : peripherals_) {
         if (m.region.contains_span(addr, n)) return &m;
     }
@@ -138,7 +138,9 @@ bool Memory::dump(std::uint32_t addr, void* out, std::size_t size) const {
 bool Memory::attach_peripheral(std::uint32_t base, std::uint32_t size, BusPeripheral* p) {
     if (size == 0 || p == nullptr) return false;
     if (base + size < base) return false;  // address wraparound
-    if (!kRegisterSpace.contains_span(base, size)) return false;
+    if (!kRegisterSpace.contains_span(base, size) && !kPpb.contains_span(base, size)) {
+        return false;
+    }
 
     for (const auto& m : peripherals_) {
         const bool overlap =

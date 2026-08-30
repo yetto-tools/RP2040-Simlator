@@ -133,15 +133,20 @@ Week 12:    PHASE 9 - Documentation & Release
       (SVCall/PendSV/SysTick/IRQ); PRIMASK masking; preemption of running handler
 - [x] Synchronous faults: UNDEFINED / bus error -> HardFault (+ lockup on
       escalation); SVC -> SVCall
-- [x] `pend_exception` / async delivery between instructions
-- [ ] NVIC register block (ISER/ICER/ISPR/ICPR/IPR) as an SCB/NVIC peripheral
-- [ ] SysTick timer (24-bit reload counter) driving kExcSysTick
-- **Tests**: `tests/unit/test_exceptions.cpp` (10 cases, 87 assertions)
+- [x] `pend_exception` / async delivery between instructions; NVIC per-IRQ
+      enable gates external interrupt delivery
+- [x] System Control Space peripheral (`src/core/scs.{h,cpp}`) on the PPB
+      (0xE000E000): NVIC ISER/ICER/ISPR/ICPR/IPR, SCB CPUID/ICSR/VTOR/AIRCR/
+      SHPR2/SHPR3, SysTick CSR/RVR/CVR with a down-counter advanced per cycle
+      by `step()`, COUNTFLAG, TICKINT -> kExcSysTick
+- [x] Memory decoder now routes the PPB region to peripherals
+- [ ] SYSRESETREQ handling; WFI/WFE sleep + SLEEPONEXIT
+- **Tests**: test_exceptions (87), test_scs (81)
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3
-- **Design**: ARMv6-M ARM B1.5; ARCHITECTURE.md section 5
-- **Files**: `include/exceptions.h`, `src/core/cpu.{h,cpp}`
+- **Design**: ARMv6-M ARM B1.5, B3; ARCHITECTURE.md section 5
+- **Files**: `include/exceptions.h`, `src/core/{cpu,scs}.{h,cpp}`
 
 #### P1.5: Clock Management (Basic)  [IN PROGRESS]
 - [x] Per-instruction cycle counter on `Cpu::step()` (`cycle_count()`)
