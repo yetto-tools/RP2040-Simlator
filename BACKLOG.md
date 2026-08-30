@@ -382,28 +382,20 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P4.3
 
-#### P4.5: I2C0 Controller
-- [ ] Master/Slave mode
-- [ ] Standard (100 kHz) and Fast (400 kHz)
-- [ ] Open-drain SDA/SCL
-- [ ] START condition
-- [ ] STOP condition
-- [ ] Repeated START
-- [ ] Clock stretching (slave holds SCL low)
-- [ ] 7-bit addressing
-- [ ] ACK/NACK detection
-- [ ] Arbitration loss
-- **Tests**: 20+ I2C tests
-- **Effort**: 20 hours
-- **Priority**: MEDIUM
-- **Dependencies**: P1.3
-
-#### P4.6: I2C1 Controller
-- [ ] Identical to I2C0
-- **Tests**: 10+ differential tests
-- **Effort**: 10 hours
-- **Priority**: MEDIUM
-- **Dependencies**: P4.5
+#### P4.5 / P4.6: I2C0 / I2C1 Controller (DW_apb_i2c)  [IN PROGRESS]
+- [x] `I2c` BusPeripheral (`src/peripherals/i2c.{h,cpp}`) @ 0x40044000 /
+      0x40048000; I2C0_IRQ = IRQ23, I2C1_IRQ = IRQ24
+- [x] Master-mode functional model: IC_ENABLE, IC_TAR, IC_DATA_CMD
+      (write byte / read command with STOP bit) against a registered
+      `set_slave(addr7, fn)` callback; 16-deep RX FIFO
+- [x] IC_STATUS (TFNF/TFE/RFNE/RFF), IC_RXFLR, IC_RAW_INTR_STAT / IC_INTR_MASK
+      / IC_INTR_STAT (RX_FULL, TX_ABRT, STOP_DET), IC_TX_ABRT_SOURCE,
+      IC_CLR_* -> I2C IRQ
+- [x] Address-NACK and TX-data-NACK aborts
+- [ ] Bus-level timing, clock stretching, 10-bit addressing, slave mode,
+      arbitration loss, DMA
+- **Tests**: `tests/unit/test_i2c.cpp` (5 cases)
+- **Design**: RP2040 datasheet 4.3
 
 ---
 
