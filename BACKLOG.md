@@ -293,7 +293,18 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P3.1, P1.4
 
-#### P3.3: Timer/PWM Controller
+#### P3.3a: System TIMER (0x40054000)  [DONE]
+- [x] 64-bit microsecond counter; TIMEHW/LW write pair, TIMEHR/LR read pair
+      with high-word latching, TIMERAWH/L unlatched
+- [x] 4 x 32-bit ALARM: write arms, low-counter match fires + auto-disarms
+- [x] ARMED (w1-disarm), INTR (w1c), INTE, INTF, INTS -> TIMER_IRQ_0..3 (NVIC)
+- [x] PAUSE; advanced from the system clock via `Timer::on_cycles()` in
+      `Simulator::step()`
+- **Tests**: `tests/unit/test_timer.cpp` (7 cases)
+- **Files**: `src/peripherals/timer.{h,cpp}`
+- **Design**: RP2040 datasheet 4.6
+
+#### P3.3: PWM Controller (0x40050000)
 - [ ] 4 timer slices
 - [ ] 2 channels per slice (A, B)
 - [ ] 16-bit counter

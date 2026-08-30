@@ -6,6 +6,7 @@ Simulator::Simulator() {
     scs_.attach(mem_);
     sio_.attach(mem_);
     iobank_.attach(mem_);
+    timer_.attach(mem_);
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
 }
@@ -34,6 +35,7 @@ ExecStatus Simulator::step() {
         pio0_.tick();
         pio1_.tick();
     }
+    timer_.on_cycles(spent);
     return status;
 }
 

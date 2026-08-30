@@ -18,6 +18,7 @@
 #include "peripherals/gpio.h"
 #include "peripherals/iobank0.h"
 #include "peripherals/sio.h"
+#include "peripherals/timer.h"
 #include "pio/pio_block.h"
 #include "pio/pio_registers.h"
 #include "rp2040.h"
@@ -56,6 +57,7 @@ public:
     Memory& memory() { return mem_; }
     Cpu& cpu() { return cpu_; }
     Gpio& gpio() { return gpio_; }
+    Timer& timer() { return timer_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -66,6 +68,7 @@ private:
     Scs scs_{cpu_};
     Sio sio_{gpio_};
     IoBank0 iobank_{gpio_};
+    Timer timer_{cpu_};
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};
