@@ -14,6 +14,7 @@
 
 #include <cstdint>
 
+#include "peripherals/gpio.h"
 #include "pio_fifo.h"
 #include "pio_isa.h"
 #include "rp2040.h"
@@ -34,7 +35,16 @@ struct SmConfig {
     std::uint8_t wrap_bottom = 0;
     std::uint8_t sideset_count = 0;   // bits of the delay/side-set field used for side-set
     bool sideset_opt = false;         // side-set is optional (extra enable bit)
+    bool sideset_pindir = false;      // side-set targets PINDIRS instead of PINS
     std::uint8_t jmp_pin = 0;
+
+    // PINCTRL: base pin + count for each pin group (pins wrap modulo 30).
+    std::uint8_t in_base = 0;
+    std::uint8_t out_base = 0;
+    std::uint8_t out_count = 0;
+    std::uint8_t set_base = 0;
+    std::uint8_t set_count = 0;
+    std::uint8_t sideset_base = 0;
 };
 
 class StateMachine {
@@ -47,6 +57,11 @@ public:
 
     // Shared 32-word instruction memory of the owning PIO block.
     void set_program(const std::uint16_t* prog) { program_ = prog; }
+
+    // Wiring provided by the owning PIO block.
+    void set_gpio(Gpio* g, Gpio::Driver drv) { gpio_ = g; driver_ = drv; }
+    void set_block_irq(std::uint8_t* irq_reg) { block_irq_ = irq_reg; }
+    void set_sm_id(unsigned id) { sm_id_ = id; }
 
     void set_enabled(bool en) { enabled_ = en; }
     bool enabled() const { return enabled_; }
@@ -82,11 +97,20 @@ private:
     void advance_pc(const PioInstr& in);
     bool do_autopull();              // returns true if OSR is usable afterwards
     void maybe_autopush();
+    void apply_sideset(const PioInstr& in);
+    std::uint32_t read_pins(std::uint8_t base, unsigned count) const;
+    void write_pins(std::uint8_t base, unsigned count, std::uint32_t value, bool dirs);
+    unsigned resolve_irq(std::uint8_t index) const;
 
     const std::uint16_t* program_ = nullptr;
+    Gpio* gpio_ = nullptr;
+    Gpio::Driver driver_ = Gpio::kPio0;
+    std::uint8_t* block_irq_ = nullptr;
+    unsigned sm_id_ = 0;
     bool enabled_ = false;
     unsigned delay_left_ = 0;
     Stall stall_ = Stall::None;
+    bool irq_wait_raised_ = false;
     PioInstr cur_{};
 };
 

@@ -173,9 +173,12 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] 4-deep TX/RX FIFO with join support (`src/pio/pio_fifo.h`)
 - [x] `StateMachine::tick()` - one instruction per post-divider clock,
       instruction wrapping (WRAP_TOP/BOTTOM), delay field
-- [ ] 2 PIO blocks x 4 SMs sharing a 32-word program + block IRQ register
-- [ ] Clock divider (16.8 fixed point) + parallel scheduling
-- **Tests**: test_pio_decode (10 cases), test_pio_sm (18 cases)
+- [x] `PioBlock`: 4 SMs sharing a 32-word program + 8-bit IRQ register,
+      per-SM 16.8 fractional clock divider, round-robin `tick()`
+      (`src/pio/pio_block.{h,cpp}`)
+- [x] SM wired to `Gpio` (per-block driver) + block IRQ register
+- [ ] 2 PIO blocks + CPU-facing register block (P2.7)
+- **Tests**: test_pio_decode (10), test_pio_sm (18), test_pio_block (7)
 - **Effort**: 30 hours
 - **Priority**: CRITICAL (40% of Phase 2)
 - **Dependencies**: P1.1, P1.3
@@ -183,13 +186,13 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `include/pio_isa.h`, `src/pio/{pio_decode,state_machine,pio_fifo}`
 
 #### P2.2: PIO ISA - JMP, WAIT, IN, OUT  [IN PROGRESS]
-- [x] JMP: always, !X, X-- (unconditional decrement), !Y, Y--, X!=Y, !OSRE
-- [ ] JMP PIN (needs the GPIO model, P3.1)
-- [ ] WAIT (GPIO level / PIN / IRQ) - needs GPIO + block IRQ register
-- [x] IN: X, Y, NULL, ISR, OSR sources; left/right shift; ISR accumulation
-- [x] OUT: X, Y, NULL, PC, ISR destinations; left/right shift from OSR
-- [ ] IN/OUT PINS + OUT PINDIRS/EXEC (need GPIO / EXEC)
-- **Tests**: covered by test_pio_sm
+- [x] JMP: always, !X, X-- (unconditional decrement), !Y, Y--, X!=Y, !OSRE, PIN
+- [x] WAIT: GPIO level, PIN (IN_BASE-relative), IRQ (with auto-clear on match)
+- [x] IN: X/Y/NULL/ISR/OSR/PINS; left/right shift; ISR accumulation
+- [x] OUT: X/Y/NULL/PC/ISR/PINS/PINDIRS; left/right shift from OSR
+- [x] side-set (data + optional enable bit), MOV PINS, SET PINS/PINDIRS
+- [ ] OUT EXEC / MOV EXEC / MOV STATUS
+- **Tests**: test_pio_sm + test_pio_block
 - **Effort**: 45 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P2.1
@@ -198,10 +201,11 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] PUSH: iffull, block/non-block (data-lost on non-block + full), ISR clear
 - [x] PULL: ifempty, block/non-block (OSR <- X on non-block + empty), autopull
 - [x] autopush / autopull with threshold + mid-instruction stall + resume
-- [x] MOV: none / invert / bit-reverse; X/Y/ISR/OSR/NULL
-- [x] SET: X, Y (PINS/PINDIRS need GPIO)
-- [ ] IRQ set/clear/wait + MOV STATUS + MOV PINS / EXEC
-- **Tests**: covered by test_pio_sm
+- [x] MOV: none / invert / bit-reverse; X/Y/ISR/OSR/NULL/PINS
+- [x] SET: X, Y, PINS, PINDIRS
+- [x] IRQ: set / clear / set+wait (relative-index resolution), block IRQ register
+- [ ] MOV STATUS + OUT/MOV EXEC
+- **Tests**: test_pio_sm + test_pio_block
 - **Effort**: 35 hours
 
 - **Dependencies**: P2.1, P2.2

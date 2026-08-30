@@ -8,6 +8,8 @@ std::uint32_t mask_n(unsigned n) {
     return n >= 32 ? 0xFFFFFFFFu : ((1u << n) - 1u);
 }
 
+unsigned wrap_pin(unsigned p) { return p % static_cast<unsigned>(Gpio::kNumPins); }
+
 std::uint32_t bit_reverse(std::uint32_t v) {
     v = ((v & 0xAAAAAAAAu) >> 1) | ((v & 0x55555555u) << 1);
     v = ((v & 0xCCCCCCCCu) >> 2) | ((v & 0x33333333u) << 2);
@@ -26,6 +28,7 @@ void StateMachine::restart() {
     isr_shift_count = 0;    // ISR empty
     delay_left_ = 0;
     stall_ = Stall::None;
+    irq_wait_raised_ = false;
 }
 
 unsigned StateMachine::delay_of(const PioInstr& in) const {
@@ -63,7 +66,45 @@ void StateMachine::advance_pc(const PioInstr& in) {
     (void)in;
 }
 
+std::uint32_t StateMachine::read_pins(std::uint8_t base, unsigned count) const {
+    std::uint32_t v = 0;
+    if (gpio_ == nullptr) return 0;
+    for (unsigned i = 0; i < count; ++i) {
+        const unsigned pin = wrap_pin(base + i);
+        if (gpio_->level(pin)) v |= (1u << i);
+    }
+    return v;
+}
+
+void StateMachine::write_pins(std::uint8_t base, unsigned count, std::uint32_t value, bool dirs) {
+    if (gpio_ == nullptr) return;
+    for (unsigned i = 0; i < count; ++i) {
+        const unsigned pin = wrap_pin(base + i);
+        const bool bit = ((value >> i) & 1u) != 0;
+        if (dirs) gpio_->driver_set_pindir(driver_, pin, bit);
+        else      gpio_->driver_set_pin(driver_, pin, bit);
+    }
+}
+
+unsigned StateMachine::resolve_irq(std::uint8_t index) const {
+    if ((index & 0x10u) != 0) {  // "relative" - add the SM id, mod 4, within a group of 4
+        return (index & 0x4u) | (((index & 0x3u) + sm_id_) & 0x3u);
+    }
+    return index & 0x7u;
+}
+
+void StateMachine::apply_sideset(const PioInstr& in) {
+    if (cfg.sideset_count == 0 || gpio_ == nullptr) return;
+    const unsigned total = cfg.sideset_count + (cfg.sideset_opt ? 1u : 0u);
+    const unsigned delay_bits = (total >= 5) ? 0u : (5u - total);
+    if (cfg.sideset_opt && ((in.delay_sideset >> 4) & 1u) == 0) return;  // side-set not present
+
+    const std::uint32_t ss = (in.delay_sideset >> delay_bits) & ((1u << cfg.sideset_count) - 1u);
+    write_pins(cfg.sideset_base, cfg.sideset_count, ss, cfg.sideset_pindir);
+}
+
 bool StateMachine::exec(const PioInstr& in) {
+    apply_sideset(in);
     switch (in.op) {
         case PioOp::JMP: {
             bool take = false;
@@ -74,7 +115,7 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kJmpNotY:    take = (y == 0); break;
                 case kJmpYDec:    take = (y != 0); y = y - 1; break;
                 case kJmpXNeY:    take = (x != y); break;
-                case kJmpPin:     take = false; break;  // no GPIO model yet
+                case kJmpPin:    take = (gpio_ != nullptr) && gpio_->level(cfg.jmp_pin); break;
                 case kJmpNotOsrE: take = (osr_shift_count < pull_thresh()); break;
                 default: break;
             }
@@ -88,7 +129,8 @@ bool StateMachine::exec(const PioInstr& in) {
             switch (in.destination) {
                 case kSetX: x = d; break;
                 case kSetY: y = d; break;
-                case kSetPins: case kSetPindirs: break;  // no GPIO model yet
+                case kSetPins:    write_pins(cfg.set_base, cfg.set_count, d, /*dirs=*/false); break;
+                case kSetPindirs: write_pins(cfg.set_base, cfg.set_count, d, /*dirs=*/true); break;
                 default: break;
             }
             advance_pc(in);
@@ -103,7 +145,7 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kMovNull: src = 0; break;
                 case kMovIsr: src = isr; break;
                 case kMovOsr: src = osr; break;
-                case kMovPins: src = 0; break;     // no GPIO model yet
+                case kMovPins: src = read_pins(cfg.in_base, 32); break;
                 case kMovStatus: src = 0; break;   // FIFO-level status: deferred
                 default: break;
             }
@@ -117,7 +159,7 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kMovY: y = src; break;
                 case kMovIsr: isr = src; isr_shift_count = 0; break;
                 case kMovOsr: osr = src; osr_shift_count = 0; break;
-                case kMovPins: break;              // no GPIO model yet
+                case kMovPins: write_pins(cfg.out_base, cfg.out_count, src, /*dirs=*/false); break;
                 case 5 /*EXEC*/: break;            // MOV EXEC: deferred
                 default: break;
             }
@@ -134,7 +176,7 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kInNull: src = 0; break;
                 case kInIsr: src = isr; break;
                 case kInOsr: src = osr; break;
-                case kInPins: src = 0; break;  // no GPIO model yet
+                case kInPins: src = read_pins(cfg.in_base, n); break;
                 default: break;
             }
             src &= mask_n(n);
@@ -174,7 +216,8 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kOutNull: break;
                 case kOutPc: pc = static_cast<std::uint8_t>(out_val & 0x1Fu); return true;
                 case kOutIsr: isr = out_val; isr_shift_count = n; break;
-                case kOutPins: case kOutPindirs: break;  // no GPIO model yet
+                case kOutPins:    write_pins(cfg.out_base, cfg.out_count, out_val, /*dirs=*/false); break;
+                case kOutPindirs: write_pins(cfg.out_base, cfg.out_count, out_val, /*dirs=*/true); break;
                 case kOutExec: break;                    // OUT EXEC: deferred
                 default: break;
             }
@@ -221,11 +264,57 @@ bool StateMachine::exec(const PioInstr& in) {
             return true;
         }
 
-        case PioOp::WAIT:
-        case PioOp::IRQ:
-            // Deferred to the next slice (needs the block IRQ register / GPIO).
+        case PioOp::WAIT: {
+            bool satisfied = false;
+            unsigned wait_irq = 0;
+            switch (in.source) {
+                case kWaitGpio:
+                    satisfied = (gpio_ != nullptr) &&
+                                (gpio_->level(wrap_pin(in.index)) == in.polarity);
+                    break;
+                case kWaitPin:
+                    satisfied = (gpio_ != nullptr) &&
+                                (gpio_->level(wrap_pin(static_cast<unsigned>(cfg.in_base) + in.index)) == in.polarity);
+                    break;
+                case kWaitIrq: {
+                    wait_irq = resolve_irq(in.index);
+                    const bool flag = (block_irq_ != nullptr) &&
+                                      ((*block_irq_ >> wait_irq) & 1u) != 0;
+                    satisfied = (flag == in.polarity);
+                    break;
+                }
+                default: satisfied = true; break;
+            }
+            if (!satisfied) return false;  // stall, retry next cycle
+            if (in.source == kWaitIrq && in.polarity && block_irq_ != nullptr) {
+                *block_irq_ = static_cast<std::uint8_t>(*block_irq_ & ~(1u << wait_irq));
+            }
             advance_pc(in);
             return true;
+        }
+
+        case PioOp::IRQ: {
+            const unsigned n = resolve_irq(in.index);
+            if (block_irq_ == nullptr) { advance_pc(in); return true; }
+
+            if (in.clear) {
+                *block_irq_ = static_cast<std::uint8_t>(*block_irq_ & ~(1u << n));
+                advance_pc(in);
+                return true;
+            }
+            // Set. Raise the flag once; if Wait, stall until it is lowered
+            // again by another entity (do not re-raise it on the retry).
+            if (!irq_wait_raised_) {
+                *block_irq_ = static_cast<std::uint8_t>(*block_irq_ | (1u << n));
+                irq_wait_raised_ = in.wait;
+            }
+            if (in.wait && ((*block_irq_ >> n) & 1u) != 0) {
+                return false;  // still stalled
+            }
+            irq_wait_raised_ = false;
+            advance_pc(in);
+            return true;
+        }
     }
     advance_pc(in);
     return true;
