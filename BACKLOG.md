@@ -68,7 +68,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 1: Core CPU + Memory (Weeks 1-2)
 
-#### P1.1: ARM Cortex-M0+ CPU Architecture  [IN PROGRESS]
+#### P1.1: ARM Cortex-M0+ CPU Architecture  [DONE]
 - [x] Register file (R0-R15, banked MSP/PSP, APSR/IPSR/EPSR, CONTROL, PRIMASK)
 - [x] Program counter management (raw PC store, bit-0 masking, advance)
 - [x] Condition code logic (N, Z, C, V) + full ARMv6-M ConditionPassed()
@@ -106,7 +106,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARCHITECTURE.md 1.4; ARMv6-M ARM chapters A5, A6, A2.2
 - **Files**: `include/thumb_isa.h`, `src/core/{thumb_decode,alu,cpu}.{h,cpp}`
 
-#### P1.3: Memory Subsystem  [IN PROGRESS]
+#### P1.3: Memory Subsystem  [DONE]
 - [x] ROM (16 KB, read-only) - direct stores fault as WriteToReadOnly
 - [x] Flash (2 MB) - read-only to CPU stores; written via backdoor load()
 - [x] SRAM (264 KB, read/write) - flat model (bank striping deferred)
@@ -123,7 +123,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: ARCHITECTURE.md section 2.3-2.4; DESIGN.md Decisions 6 & 13
 - **Files**: `src/core/bus.h`, `src/core/memory.{h,cpp}`, `src/core/bus.cpp`
 
-#### P1.4: Exception model + NVIC  [IN PROGRESS]
+#### P1.4: Exception model + NVIC  [DONE]
 - [x] Vector table lookup via VTOR; `Cpu::reset()` = MSP<-vec[0], PC<-vec[1]
 - [x] Exception entry: 8-word frame {R0-R3,R12,LR,ReturnAddr,xPSR}, forced
       8-byte align + xPSR[9] realign flag, EXC_RETURN in LR, IPSR + Handler mode
@@ -298,7 +298,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 3: GPIO + Timer (Week 6)
 
-#### P3.1: GPIO Controller  [IN PROGRESS]
+#### P3.1: GPIO Controller  [DONE - slew/drive-strength deferred]
 - [x] 30-pin pad model (`src/peripherals/gpio.{h,cpp}`): FUNCSEL routing
       (SIO / PIO0 / PIO1), per-driver OUT + OE, pad pulls, external stimulus,
       effective pad-driving / pad-level / input-level resolution
