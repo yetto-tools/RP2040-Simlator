@@ -1,6 +1,6 @@
 // main.cpp - CLI front-end for the RP2040 simulator.
 //
-// Loads an ARM ELF32 image and runs it on the Cortex-M0+ core (with its
+// Loads an ARM ELF32 or UF2 image and runs it on the Cortex-M0+ core (with its
 // peripherals) until it spins on a self-branch, faults, or reaches an
 // instruction cap.
 #include <cstdint>
@@ -15,7 +15,7 @@
 namespace {
 
 void print_usage(const char* argv0) {
-    std::cout << "Usage: " << argv0 << " [options] <firmware.elf>\n"
+    std::cout << "Usage: " << argv0 << " [options] <firmware.elf|firmware.uf2>\n"
               << "\n"
               << "Options:\n"
               << "  --gdb <port>  Wait for arm-none-eabi-gdb on localhost:<port>\n"

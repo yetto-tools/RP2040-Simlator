@@ -1,6 +1,17 @@
 #include "simulator.h"
 
+#include "loaders/uf2_loader.h"
+
 namespace rp2040 {
+
+namespace {
+
+bool has_suffix(const std::string& s, const char* suffix) {
+    const std::string suf = suffix;
+    return s.size() >= suf.size() && s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+}
+
+}  // namespace
 
 Simulator::Simulator() {
     scs_.attach(mem_);
@@ -42,6 +53,22 @@ Simulator::Simulator() {
 }
 
 ElfImage Simulator::load(const std::string& path, bool from_entry) {
+    if (has_suffix(path, ".uf2")) {
+        const Uf2Image u = load_uf2_file(mem_, path);
+        ElfImage img;
+        img.ok = u.ok;
+        img.error = u.error;
+        img.segments_loaded = u.blocks_loaded;
+        img.lowest_addr = u.lowest_addr;
+        img.highest_addr = u.highest_addr;
+        img.entry = 0;  // UF2 carries no entry point
+        if (!img.ok) return img;
+        // A UF2 is a flash image: reset always runs through its vector table.
+        cpu_.set_vtor(img.lowest_addr);
+        cpu_.reset();
+        return img;
+    }
+
     const ElfImage img = load_elf_file(mem_, path);
     if (!img.ok) return img;
 

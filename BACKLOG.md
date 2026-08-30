@@ -561,15 +561,23 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Dependencies**: P1.3
 - **Files**: `src/loaders/elf_loader.{h,cpp}`, `src/main.cpp`, `tests/fixtures/`
 
-#### P7.2: UF2 Loader
-- [ ] Parse UF2 block format
-- [ ] Flash image validation
-- [ ] Checksum verification
-- [ ] Boot mode detection
-- **Tests**: 10+ UF2 files
+#### P7.2: UF2 Loader  [DONE]
+- [x] Parse the 512-byte UF2 block format (both start magics + end magic)
+- [x] Flash image validation: payload <= 476 B, numBlocks vs file length,
+      target range backed by ROM/Flash/SRAM, address-space wrap
+- [x] Family-ID check (rejects non-RP2040 0xE48BFF56 when the flag is present)
+- [x] "Not main flash" blocks skipped and counted; lowest/highest span reported
+- [x] `load_uf2_file()` convenience; `Simulator::load()` dispatches on `.uf2`
+      and resets through the image's vector table
+- [ ] Extension-tag / MD5-region parsing (not emitted by elf2uf2; deferred)
+- **Tests**: `tests/unit/test_uf2_loader.cpp` (synthetic blocks: two-block image,
+      not-main-flash skip, no-family block, 7 malformed-stream subcases, run on
+      CPU) + `tests/integration/test_firmware.cpp` (real sum.elf repackaged as
+      UF2 and run end-to-end)
 - **Effort**: 10 hours
 - **Priority**: MEDIUM
 - **Dependencies**: P1.3
+- **Files**: `src/loaders/uf2_loader.{h,cpp}`, `src/simulator.cpp`
 
 #### P7.3: PIO Assembler
 - [ ] Support pioasm syntax
@@ -940,7 +948,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P7.1.1: ELF loader (parsing)
 - [ ] P7.1.2: ELF loader (loading into memory)
 - [ ] P7.1.3: Symbol table extraction
-- [ ] P7.2.1: UF2 loader
+- [x] P7.2.1: UF2 loader
 - [ ] P7.3.1: PIO assembler (pioasm syntax)
 - [ ] P7.3.2: Label resolution
 - [ ] P7.4.1: GDB stub TCP server

@@ -40,8 +40,11 @@ class Simulator {
 public:
     Simulator();
 
-    // Load an ELF image, point VTOR at its lowest loaded address and reset.
-    // With `from_entry`, instead jump straight to e_entry with SP at top of SRAM.
+    // Load a firmware image, point VTOR at its lowest loaded address and reset.
+    // A `.uf2` path is loaded as a UF2 container; anything else as an ARM ELF32.
+    // With `from_entry` (ELF only), instead jump straight to e_entry with SP at
+    // the top of SRAM. UF2 images carry no entry point and always reset through
+    // the vector table.
     ElfImage load(const std::string& path, bool from_entry = false);
 
     void reset() { cpu_.reset(); }

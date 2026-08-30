@@ -49,6 +49,7 @@ add_library(rp2040_core STATIC
     src/core/timing.cpp
     src/core/scs.cpp
     src/loaders/elf_loader.cpp
+    src/loaders/uf2_loader.cpp
     src/pio/pio_decode.cpp
     src/pio/state_machine.cpp
     src/pio/pio_block.cpp
