@@ -105,18 +105,29 @@ No host compiler installed? The portable
 copy `CMakeUserPresets.json` from an existing checkout or point the cache
 variables `CMAKE_CXX_COMPILER` / `CMAKE_MAKE_PROGRAM` at your toolchain.
 
-### Run Simple Test
+### Run an image
 
 ```bash
-# Execute a pre-compiled ARM binary with GDB stub
-./rp2040-sim firmware.elf --gdb
+# Run to a self-branch / fault and dump the register file
+./rp2040-sim --entry firmware.elf
 
-# In another terminal
-arm-none-eabi-gdb firmware.elf
+# Reset through the vector table instead of jumping to e_entry
+./rp2040-sim firmware.elf
+```
+
+### Debug with GDB
+
+```bash
+# Terminal 1: load the image and wait for a debugger
+./rp2040-sim --gdb 3333 --entry firmware.elf
+
+# Terminal 2
+arm-none-eabi-gdb -q firmware.elf
 (gdb) target remote localhost:3333
-(gdb) break main
+(gdb) break _start
 (gdb) continue
-(gdb) step
+(gdb) stepi
+(gdb) info registers
 ```
 
 ### Run PIO Program
