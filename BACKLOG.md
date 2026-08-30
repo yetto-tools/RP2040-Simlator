@@ -90,18 +90,22 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: CRITICAL
 - **Dependencies**: P1.1
 
-#### P1.3: Memory Subsystem
-- [ ] ROM (16 KB, read-only)
-- [ ] Flash (2 MB, read/write)
-- [ ] SRAM (264 KB, read/write)
-- [ ] Memory map routing (0x40000000+)
-- [ ] Access size handling (byte, half, word)
-- [ ] Alignment checking
-- [ ] Memory faults (misaligned, invalid address)
-- **Tests**: 15+ edge cases
+#### P1.3: Memory Subsystem  [IN PROGRESS]
+- [x] ROM (16 KB, read-only) - direct stores fault as WriteToReadOnly
+- [x] Flash (2 MB) - read-only to CPU stores; written via backdoor load()
+- [x] SRAM (264 KB, read/write) - flat model (bank striping deferred)
+- [x] Memory map routing (0x40000000+) - BusPeripheral interface + attach_peripheral()
+- [x] Access size handling (byte, half, word) - little-endian; LDRD/STRD N/A on ARMv6-M
+- [x] Alignment checking - all unaligned half/word accesses trapped (ARMv6-M)
+- [x] Memory faults (misaligned, invalid address) - BusStatus enum, no exceptions
+- [x] Backdoor load()/dump() for loaders and tests
+- [ ] Atomic set/clear/xor register aliases (+0x1000/+0x2000/+0x3000) - deferred to Phase 3 peripheral base class
+- **Tests**: 15+ edge cases -> `tests/unit/test_memory.cpp` (19 cases)
 - **Effort**: 20 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P1.1
+- **Design**: ARCHITECTURE.md section 2.3-2.4; DESIGN.md Decisions 6 & 13
+- **Files**: `src/core/bus.h`, `src/core/memory.{h,cpp}`, `src/core/bus.cpp`
 
 #### P1.4: Basic Interrupt Controller (NVIC)
 - [ ] Vector table lookup

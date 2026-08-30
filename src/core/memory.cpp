@@ -1,0 +1,153 @@
+#include "core/memory.h"
+
+#include <cstring>
+
+namespace rp2040 {
+
+namespace {
+
+BusWidth width_of(std::uint32_t bytes) {
+    switch (bytes) {
+        case 1:  return BusWidth::Byte;
+        case 2:  return BusWidth::Half;
+        default: return BusWidth::Word;
+    }
+}
+
+}  // namespace
+
+// Regions are value-initialised to zero. Real SRAM is undefined at power-on,
+// but a deterministic zero fill is required for reproducible traces
+// (DESIGN.md, determinism decision).
+Memory::Memory()
+    : rom_(kRomSize), flash_(kFlashSize), sram_(kSramSize) {}
+
+// --- backing-store lookup --------------------------------------------------
+
+const std::uint8_t* Memory::backing(std::uint32_t addr, std::uint32_t n) const {
+    if (kRom.contains_span(addr, n))   return rom_.data()   + (addr - kRom.base);
+    if (kFlash.contains_span(addr, n)) return flash_.data() + (addr - kFlash.base);
+    if (kSram.contains_span(addr, n))  return sram_.data()  + (addr - kSram.base);
+    return nullptr;
+}
+
+std::uint8_t* Memory::backing(std::uint32_t addr, std::uint32_t n, bool& writable) {
+    // Only SRAM is writable from the CPU bus path; ROM and the XIP flash
+    // window are read-only to direct stores (ARCHITECTURE.md 2.4).
+    writable = kSram.contains_span(addr, n);
+    const std::uint8_t* p = static_cast<const Memory*>(this)->backing(addr, n);
+    return const_cast<std::uint8_t*>(p);
+}
+
+Memory::PeripheralMapping* Memory::find_peripheral(std::uint32_t addr, std::uint32_t n) {
+    if (!kRegisterSpace.contains(addr)) return nullptr;
+    for (auto& m : peripherals_) {
+        if (m.region.contains_span(addr, n)) return &m;
+    }
+    return nullptr;
+}
+
+// --- scalar access templates --------------------------------------------
+
+template <typename T>
+BusResult<T> Memory::read_scalar(std::uint32_t addr) {
+    constexpr auto width = static_cast<std::uint32_t>(sizeof(T));
+    if constexpr (width > 1) {
+        if ((addr & (width - 1u)) != 0u) {
+            return BusResult<T>::fail(BusStatus::MisalignedAccess);
+        }
+    }
+
+    bool writable = false;
+    if (const std::uint8_t* p = backing(addr, width, writable)) {
+        T value = 0;
+        for (std::uint32_t i = 0; i < width; ++i) {
+            value = static_cast<T>(value | (static_cast<T>(p[i]) << (8u * i)));
+        }
+        return {value, BusStatus::Ok};
+    }
+
+    if (PeripheralMapping* m = find_peripheral(addr, width)) {
+        BusResult<std::uint32_t> r =
+            m->peripheral->bus_read(addr - m->region.base, width_of(width));
+        return {static_cast<T>(r.value), r.status};
+    }
+
+    return BusResult<T>::fail(BusStatus::InvalidAddress);
+}
+
+template <typename T>
+BusStatus Memory::write_scalar(std::uint32_t addr, T value) {
+    constexpr auto width = static_cast<std::uint32_t>(sizeof(T));
+    if constexpr (width > 1) {
+        if ((addr & (width - 1u)) != 0u) return BusStatus::MisalignedAccess;
+    }
+
+    bool writable = false;
+    if (std::uint8_t* p = backing(addr, width, writable)) {
+        if (!writable) return BusStatus::WriteToReadOnly;
+        const auto raw = static_cast<std::uint32_t>(value);
+        for (std::uint32_t i = 0; i < width; ++i) {
+            p[i] = static_cast<std::uint8_t>(raw >> (8u * i));
+        }
+        return BusStatus::Ok;
+    }
+
+    if (PeripheralMapping* m = find_peripheral(addr, width)) {
+        return m->peripheral->bus_write(addr - m->region.base,
+                                        static_cast<std::uint32_t>(value),
+                                        width_of(width));
+    }
+
+    return BusStatus::InvalidAddress;
+}
+
+// --- public bus path ----------------------------------------------------
+
+BusResult<std::uint8_t> Memory::read_byte(std::uint32_t addr) { return read_scalar<std::uint8_t>(addr); }
+BusResult<std::uint16_t> Memory::read_half(std::uint32_t addr) { return read_scalar<std::uint16_t>(addr); }
+BusResult<std::uint32_t> Memory::read_word(std::uint32_t addr) { return read_scalar<std::uint32_t>(addr); }
+
+BusStatus Memory::write_byte(std::uint32_t addr, std::uint8_t value) { return write_scalar<std::uint8_t>(addr, value); }
+BusStatus Memory::write_half(std::uint32_t addr, std::uint16_t value) { return write_scalar<std::uint16_t>(addr, value); }
+BusStatus Memory::write_word(std::uint32_t addr, std::uint32_t value) { return write_scalar<std::uint32_t>(addr, value); }
+
+// --- backdoor path ----------------------------------------------------
+
+bool Memory::load(std::uint32_t addr, const void* data, std::size_t size) {
+    if (size == 0) return true;
+    if (size > 0xFFFFFFFFu) return false;
+    bool writable = false;
+    std::uint8_t* p = backing(addr, static_cast<std::uint32_t>(size), writable);
+    if (p == nullptr) return false;
+    std::memcpy(p, data, size);
+    return true;
+}
+
+bool Memory::dump(std::uint32_t addr, void* out, std::size_t size) const {
+    if (size == 0) return true;
+    if (size > 0xFFFFFFFFu) return false;
+    const std::uint8_t* p = backing(addr, static_cast<std::uint32_t>(size));
+    if (p == nullptr) return false;
+    std::memcpy(out, p, size);
+    return true;
+}
+
+// --- peripheral routing ------------------------------------------------
+
+bool Memory::attach_peripheral(std::uint32_t base, std::uint32_t size, BusPeripheral* p) {
+    if (size == 0 || p == nullptr) return false;
+    if (base + size < base) return false;  // address wraparound
+    if (!kRegisterSpace.contains_span(base, size)) return false;
+
+    for (const auto& m : peripherals_) {
+        const bool overlap =
+            base < (m.region.base + m.region.size) && m.region.base < (base + size);
+        if (overlap) return false;
+    }
+
+    peripherals_.push_back(PeripheralMapping{Region{base, size}, p});
+    return true;
+}
+
+}  // namespace rp2040

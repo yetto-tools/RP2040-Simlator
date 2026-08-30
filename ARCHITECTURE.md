@@ -228,38 +228,84 @@ MOV (shift) - Move with shift
 
 ### 2.3 Access Sizes & Alignment
 
+The bus exposes three access widths. The RP2040 core is a Cortex-M0+
+(ARMv6-M), which is **little-endian only** and **traps every unaligned
+access unconditionally** - there is no `CCR.UNALIGN_TRP` configurability as
+in ARMv7-M.
+
+| Method | Width | Alignment rule | On violation |
+|--------|-------|----------------|--------------|
+| `read_byte` / `write_byte` | 8-bit | any address | - |
+| `read_half` / `write_half` | 16-bit | `addr % 2 == 0` | `MisalignedAccess` |
+| `read_word` / `write_word` | 32-bit | `addr % 4 == 0` | `MisalignedAccess` |
+
+> **Note (datasheet deviation):** `LDRD`/`STRD` (64-bit) do **not** exist in
+> the ARMv6-M Thumb instruction set, so no `read_dword`/`write_dword` is
+> provided on the CPU bus path. 64-bit values (e.g. the TIMER latched
+> counter) are read by firmware as two separate 32-bit accesses. An earlier
+> draft of this section listed them; that was an ARMv7-M assumption.
+
 ```cpp
-// Memory access methods
-class Memory {
-    // Byte access - always allowed
-    uint8_t read_byte(uint32_t addr);
-    void write_byte(uint32_t addr, uint8_t value);
+enum class BusWidth { Byte = 1, Half = 2, Word = 4 };
 
-    // Half-word (16-bit) - must be 2-byte aligned
-    uint16_t read_half(uint32_t addr);      // addr & 1 must be 0
-    void write_half(uint32_t addr, uint16_t value);
+enum class BusStatus {
+    Ok,
+    MisalignedAccess,   // width > 1 and address not naturally aligned
+    InvalidAddress,     // not backed by ROM/Flash/SRAM and no peripheral mapped
+    WriteToReadOnly,    // store into ROM or the XIP flash window
+    PeripheralError,    // a mapped peripheral rejected the access
+};
 
-    // Word (32-bit) - must be 4-byte aligned
-    uint32_t read_word(uint32_t addr);      // addr & 3 must be 0
-    void write_word(uint32_t addr, uint32_t value);
-
-    // Dual word (64-bit) - must be 8-byte aligned (LDRD/STRD)
-    uint64_t read_dword(uint32_t addr);     // addr & 7 must be 0
-    void write_dword(uint32_t addr, uint64_t value);
+template <typename T>
+struct BusResult {
+    T value{};
+    BusStatus status = BusStatus::Ok;
+    bool ok() const { return status == BusStatus::Ok; }
 };
 ```
 
-### 2.4 Memory Access Faults
+Reads return `BusResult<uintN_t>`; writes return `BusStatus`. No exceptions
+are thrown on the hot path - the CPU maps any non-`Ok` status onto a
+HardFault (ARMv6-M has no UsageFault; misaligned/bus errors escalate
+directly). This keeps the common case branch-light and fully deterministic
+(DESIGN.md Decision 6, Decision 13).
+
+### 2.4 Address Decode
+
+| Range | Backing | Direct CPU write |
+|-------|---------|------------------|
+| `0x00000000 - 0x00003FFF` | ROM (16 KiB) | fault (`WriteToReadOnly`) |
+| `0x10000000 - 0x101FFFFF` | Flash / XIP window (2 MiB) | fault (`WriteToReadOnly`) [1] |
+| `0x20000000 - 0x20041FFF` | SRAM (264 KiB, flat) [2] | ok |
+| `0x40000000 - 0x5FFFFFFF` | peripheral routing table | delegated to peripheral |
+| everything else | - | fault (`InvalidAddress`) |
+
+- [1] The XIP flash window is read-only to direct stores on real hardware;
+  programming goes through the SSI/boot2 path. The ELF/UF2 loaders and tests
+  populate flash through the **backdoor API** (`load()` / `dump()`), which
+  bypasses write protection, alignment rules and peripheral side effects.
+- [2] SRAM is physically 4x64 KiB striped banks + 2x4 KiB non-striped banks
+  with additional non-striped aliases at `0x21000000+`. The functional model
+  is a single flat 264 KiB block; bank striping only affects bus-contention
+  timing and is deferred (documented limitation).
+
+Peripherals register themselves on the bus:
 
 ```cpp
-enum class MemoryFault {
-    MISALIGNED_ACCESS,     // LDR to misaligned address
-    INVALID_ADDRESS,       // Out of range
-    WRITE_TO_ROM,          // Writing to read-only region
-    MPU_VIOLATION,         // Memory Protection Unit violation
-    PERIPHERAL_ERROR,      // Peripheral returned error
+class BusPeripheral {
+public:
+    virtual ~BusPeripheral() = default;
+    // offset is relative to the registered base; width/alignment already checked.
+    virtual BusResult<uint32_t> bus_read(uint32_t offset, BusWidth w) = 0;
+    virtual BusStatus bus_write(uint32_t offset, uint32_t value, BusWidth w) = 0;
 };
+
+void Memory::attach_peripheral(uint32_t base, uint32_t size, BusPeripheral* p);
 ```
+
+Register-space atomic alias offsets (`+0x1000` XOR, `+0x2000` set,
+`+0x3000` clear) are handled inside the peripheral base class, not the bus
+decoder, and land with the first real peripheral (Phase 3).
 
 ---
 
