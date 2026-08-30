@@ -109,6 +109,14 @@ TEST_CASE_FIXTURE(PioRegFix, "IRQ register: read, write-1-clear, and IRQ_FORCE")
     CHECK(rd(0x030) == (1u << 5));
 }
 
+TEST_CASE_FIXTURE(PioRegFix, "atomic aliases work on CTRL (pio_sm_set_enabled path)") {
+    wr(0x2000u + 0x000u, 1u << 1);   // hw_set_bits(&pio->ctrl, 1<<1) -> enable SM1
+    CHECK(block.sm(1).enabled());
+    CHECK_FALSE(block.sm(0).enabled());
+    wr(0x3000u + 0x000u, 1u << 1);   // hw_clear_bits -> disable SM1
+    CHECK_FALSE(block.sm(1).enabled());
+}
+
 TEST_CASE("PIO IRQ flag routed to the NVIC through IRQ0_INTE") {
     Gpio gpio;
     PioBlock block(gpio, 0);

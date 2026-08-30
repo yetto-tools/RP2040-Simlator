@@ -46,7 +46,7 @@ void Timer::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
-BusResult<std::uint32_t> Timer::bus_read(std::uint32_t offset, BusWidth) {
+BusResult<std::uint32_t> Timer::reg_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kTIMELR:
             read_latch_hi_ = static_cast<std::uint32_t>(counter_ >> 32);
@@ -71,7 +71,7 @@ BusResult<std::uint32_t> Timer::bus_read(std::uint32_t offset, BusWidth) {
     }
 }
 
-BusStatus Timer::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
+BusStatus Timer::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     switch (offset) {
         case kTIMEHW:
             write_staging_hi_ = value;

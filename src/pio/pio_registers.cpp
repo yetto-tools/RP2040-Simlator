@@ -118,7 +118,7 @@ std::uint32_t PioRegisters::read_flevel() const {
     return v;
 }
 
-BusResult<std::uint32_t> PioRegisters::bus_read(std::uint32_t offset, BusWidth) {
+BusResult<std::uint32_t> PioRegisters::reg_read(std::uint32_t offset, BusWidth) {
     if (offset >= kTXF0 && offset < kTXF0 + 16) {
         return {0u, BusStatus::Ok};  // TXF is write-only; reads as 0
     }
@@ -161,7 +161,7 @@ BusResult<std::uint32_t> PioRegisters::bus_read(std::uint32_t offset, BusWidth) 
     }
 }
 
-BusStatus PioRegisters::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
+BusStatus PioRegisters::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     if (offset >= kTXF0 && offset < kTXF0 + 16) {
         const unsigned sm = (offset - kTXF0) / 4u;
         block_.sm(sm).tx.push(value);  // overflow drops (FDEBUG bit not modelled)

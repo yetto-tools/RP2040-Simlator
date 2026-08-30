@@ -79,6 +79,13 @@ TEST_CASE_FIXTURE(TimerFix, "INTF forces an alarm interrupt without the timer fi
     CHECK_FALSE(cpu.is_pending(Timer::kIrq0 + 2));
 }
 
+TEST_CASE_FIXTURE(TimerFix, "the atomic SET alias reaches INTE") {
+    wr(0x2000u + 0x38u, 0x4u);          // hw_set_bits(&timer->inte, 1<<2)
+    CHECK((rd(0x38) & 0x4u) != 0);
+    wr(0x3000u + 0x38u, 0x4u);          // hw_clear_bits
+    CHECK((rd(0x38) & 0x4u) == 0);
+}
+
 TEST_CASE_FIXTURE(TimerFix, "PAUSE freezes the counter") {
     wr(0x30, 1u);                              // PAUSE
     timer.on_cycles(100);

@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 
+#include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
 #include "core/memory.h"
@@ -17,11 +18,11 @@
 
 namespace rp2040 {
 
-class PioRegisters : public BusPeripheral {
+class PioRegisters : public AtomicPeripheral {
 public:
     static constexpr std::uint32_t kPio0Base = 0x50200000u;
     static constexpr std::uint32_t kPio1Base = 0x50300000u;
-    static constexpr std::uint32_t kSize = 0x1000u;
+    static constexpr std::uint32_t kSize = AtomicPeripheral::kAtomicSize;
     // PIO0_IRQ_0 = IRQ7, PIO0_IRQ_1 = IRQ8, PIO1_IRQ_0 = IRQ9, PIO1_IRQ_1 = IRQ10.
     static constexpr unsigned kPio0Irq0 = kExcExternal0 + 7;
     static constexpr unsigned kPio1Irq0 = kExcExternal0 + 9;
@@ -36,8 +37,8 @@ public:
     void connect_nvic(Cpu* cpu, unsigned irq0) { cpu_ = cpu; nvic_irq0_ = irq0; }
     void poll_interrupts();
 
-    BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
-    BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
+    BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
 private:
     void write_ctrl(std::uint32_t value);

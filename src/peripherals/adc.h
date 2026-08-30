@@ -11,16 +11,17 @@
 #include <cstdint>
 #include <deque>
 
+#include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/cpu.h"
 #include "core/memory.h"
 
 namespace rp2040 {
 
-class Adc : public BusPeripheral {
+class Adc : public AtomicPeripheral {
 public:
     static constexpr std::uint32_t kBase = 0x4004C000u;
-    static constexpr std::uint32_t kSize = 0x1000u;
+    static constexpr std::uint32_t kSize = AtomicPeripheral::kAtomicSize;
     static constexpr unsigned kNumInputs = 5;   // 4 GPIO + temperature sensor
     static constexpr unsigned kTempChannel = 4;
     static constexpr unsigned kFifoDepth = 4;
@@ -32,8 +33,8 @@ public:
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
-    BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
-    BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
+    BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
     // Test bench: drive an input with a raw 12-bit code (0..4095).
     void set_input(unsigned channel, std::uint16_t raw12);

@@ -457,8 +457,10 @@ Week 12:    PHASE 9 - Documentation & Release
 > **Cross-cutting:** `src/core/atomic_peripheral.h` provides the shared
 > `AtomicPeripheral` base (span 0x4000; XOR/SET/CLR at +0x1000/2000/3000 as a
 > read-modify-write over `reg_read`/`reg_write`). Adopted by `Resets`,
-> `IoBank0`, `Pwm`. TODO: migrate `Scs`, `PioRegisters`, `Timer`, `Dma`,
-> `Adc` too (pico-sdk uses `hw_set_bits` etc. on all of them).
+> `IoBank0`, `Pwm`, `Timer`, `Dma`, `Adc`, `PioRegisters`, `Xosc`, `Pll`,
+> `Clocks`. Not `Scs` - the PPB (0xE0000000) has no atomic aliases. `Sio`
+> (0xD0000000) has its own SET/CLR/XOR *registers* rather than address
+> aliases, already handled.
 
 #### P5.4: Real-Time Clock (RTC)
 - [ ] Date/time registers

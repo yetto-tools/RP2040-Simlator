@@ -100,7 +100,7 @@ void Adc::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
-BusResult<std::uint32_t> Adc::bus_read(std::uint32_t offset, BusWidth) {
+BusResult<std::uint32_t> Adc::reg_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kCS: return {cs_, BusStatus::Ok};
         case kRESULT: return {result_, BusStatus::Ok};
@@ -134,7 +134,7 @@ BusResult<std::uint32_t> Adc::bus_read(std::uint32_t offset, BusWidth) {
     }
 }
 
-BusStatus Adc::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
+BusStatus Adc::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     switch (offset) {
         case kCS: {
             // READY is read-only; START_ONCE / START_MANY self-clear here.

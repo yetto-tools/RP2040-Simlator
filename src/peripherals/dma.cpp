@@ -125,7 +125,7 @@ void Dma::trigger(unsigned ch) {
     }
 }
 
-BusResult<std::uint32_t> Dma::bus_read(std::uint32_t offset, BusWidth) {
+BusResult<std::uint32_t> Dma::reg_read(std::uint32_t offset, BusWidth) {
     if (offset < kNumChannels * 0x40u) {
         const unsigned ch = offset / 0x40u;
         const unsigned within = offset & 0x3Fu;
@@ -151,7 +151,7 @@ BusResult<std::uint32_t> Dma::bus_read(std::uint32_t offset, BusWidth) {
     }
 }
 
-BusStatus Dma::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
+BusStatus Dma::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     if (offset < kNumChannels * 0x40u) {
         const unsigned ch = offset / 0x40u;
         const unsigned within = offset & 0x3Fu;
