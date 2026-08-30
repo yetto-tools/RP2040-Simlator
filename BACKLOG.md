@@ -434,18 +434,24 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 5: ADC + Advanced Interrupts (Week 8)
 
-#### P4.4: DMA Controller (0x50000000)  [IN PROGRESS]
+#### P4.4: DMA Controller (0x50000000)  [DONE bar sniff CRC]
 - [x] `Dma` BusPeripheral (`src/peripherals/dma.{h,cpp}`), 12 channels
 - [x] READ_ADDR / WRITE_ADDR / TRANS_COUNT / CTRL + all four alias groups,
       trigger on the last register of each alias
-- [x] Functional transfer through the Memory bus: byte/half/word, INCR_READ /
-      INCR_WRITE, RING_SIZE/RING_SEL wrap, BSWAP; READ/WRITE_ERROR on bus fault
-- [x] CHAIN_TO (with loop guard), MULTI_CHAN_TRIGGER, CHAN_ABORT
+- [x] Transfer through the Memory bus: byte/half/word, INCR_READ / INCR_WRITE,
+      RING_SIZE/RING_SEL wrap, BSWAP; READ/WRITE_ERROR on bus fault
+- [x] CHAIN_TO (0-length loop guard), MULTI_CHAN_TRIGGER, CHAN_ABORT (stops a
+      paced transfer mid-flight)
 - [x] INTR (w1c) / INTE0/INTF0/INTS0 + INTE1/INTF1/INTS1 -> DMA_IRQ_0 (IRQ11)
-      / DMA_IRQ_1 (IRQ12); N_CHANNELS
-- [ ] DREQ pacing (every TREQ currently runs unpaced/immediately); sniff CRC;
-      DMA timers; per-transfer cycle cost
-- **Tests**: `tests/unit/test_dma.cpp` (9 cases)
+      / DMA_IRQ_1 (IRQ12), both routed to both cores; N_CHANNELS
+- [x] DREQ pacing: transfers are stepped by `Dma::on_cycles()` from
+      `Simulator::step()`. PERMANENT (0x3F) = one element/clock; TIMER0..3
+      (0x3B..0x3E) = `sys_clk * X/Y` from the DMA pacing-timer registers
+      (0x420..0x42C); a peripheral DREQ is approximated as one element every
+      `dreq_divisor()` clocks (no FIFO-level handshake). TRANS_COUNT reads the
+      live remaining count while BUSY.
+- [ ] Sniff CRC (CRC32/16, bit-reverse, seed) - not started
+- **Tests**: `tests/unit/test_dma.cpp` (11 cases)
 - **Files**: `src/peripherals/dma.{h,cpp}`
 - **Design**: RP2040 datasheet 2.5
 
@@ -935,7 +941,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] P4.3.1: SPI0 architecture
 - [ ] P4.3.2: Clock modes (CPOL/CPHA)
 - [ ] P4.4.1: SPI1 (copy SPI0)
-- [ ] P4.5.1: I2C0 (optional, defer to Phase 2)
+- [x] P4.5.1: I2C0
 
 **Definition of Done**:
 - [ ] UART echo test working

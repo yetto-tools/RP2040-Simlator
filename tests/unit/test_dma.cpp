@@ -16,16 +16,18 @@ namespace {
 constexpr std::uint32_t kSrc = 0x20001000u;
 constexpr std::uint32_t kDst = 0x20002000u;
 
-// CTRL builder.
+// CTRL builder. `treq` defaults to PERMANENT (0x3f = unpaced, one element/clock).
 constexpr std::uint32_t ctrl(unsigned data_size, bool incr_r, bool incr_w,
-                             unsigned chain_to, bool bswap = false, bool quiet = false) {
+                             unsigned chain_to, bool bswap = false, bool quiet = false,
+                             unsigned treq = 0x3Fu) {
     return 1u                                   // EN
          | (data_size << 2)
          | (incr_r ? (1u << 4) : 0u)
          | (incr_w ? (1u << 5) : 0u)
          | (chain_to << 11)
-         | (bswap ? (1u << 22) : 0u)
-         | (quiet ? (1u << 21) : 0u);
+         | (treq << 15)
+         | (quiet ? (1u << 21) : 0u)
+         | (bswap ? (1u << 22) : 0u);
 }
 
 struct DmaFix {
@@ -41,14 +43,29 @@ struct DmaFix {
     }
     std::uint32_t rd(std::uint32_t off) { return mem.read_word(Dma::kBase + off).value; }
 
-    // Program channel `ch` via the alias-0 group and trigger with CTRL_TRIG.
+    // Give the DMA enough system clocks to drain any armed (unpaced) channel.
+    void pump(std::uint64_t cycles = 8192) { dma.on_cycles(cycles); }
+
+    // Program channel `ch` via the alias-0 group, trigger with CTRL_TRIG, and
+    // run the transfer to completion (unpaced channels move one element/clock).
     void program(unsigned ch, std::uint32_t read, std::uint32_t write,
                  std::uint32_t count, std::uint32_t c) {
         const std::uint32_t b = ch * 0x40u;
         wr(b + 0x00, read);
         wr(b + 0x04, write);
         wr(b + 0x08, count);
-        wr(b + 0x0C, c);   // CTRL_TRIG - starts the transfer
+        wr(b + 0x0C, c);   // CTRL_TRIG - arms the transfer
+        pump();
+    }
+
+    // Same, but leave the transfer armed (for tests that pace it by hand).
+    void program_no_pump(unsigned ch, std::uint32_t read, std::uint32_t write,
+                         std::uint32_t count, std::uint32_t c) {
+        const std::uint32_t b = ch * 0x40u;
+        wr(b + 0x00, read);
+        wr(b + 0x04, write);
+        wr(b + 0x08, count);
+        wr(b + 0x0C, c);
     }
 };
 
@@ -88,6 +105,7 @@ TEST_CASE_FIXTURE(DmaFix, "the alias trigger registers all start the channel") {
     wr(b + 0x34, kDst);
     wr(b + 0x38, 1);
     wr(b + 0x3C, kSrc);   // READ_ADDR_TRIG
+    pump();
     CHECK(mem.read_word(kDst).value == 0x5A5A5A5Au);
 }
 
@@ -131,4 +149,57 @@ TEST_CASE_FIXTURE(DmaFix, "ring buffer wraps the write address") {
     // 8 words into a 16-byte ring -> last 4 overwrite the first 4.
     CHECK(mem.read_word(kDst + 0).value == 0xC0DE04u);
     CHECK(mem.read_word(kDst + 12).value == 0xC0DE07u);
+}
+
+TEST_CASE_FIXTURE(DmaFix, "an unpaced channel moves one element per system clock") {
+    for (unsigned i = 0; i < 10; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, i) == BusStatus::Ok);
+
+    const std::uint32_t b = 0;
+    wr(b + 0x00, kSrc);
+    wr(b + 0x04, kDst);
+    wr(b + 0x08, 10);
+    wr(b + 0x0C, ctrl(2, true, true, 0));   // CTRL_TRIG, TREQ = PERMANENT
+    CHECK(dma.channel_busy(0));
+    CHECK(dma.remaining(0) == 10u);
+
+    dma.on_cycles(4);
+    CHECK(dma.remaining(0) == 6u);          // 4 elements in 4 clocks
+    CHECK(mem.read_word(kDst + 12).value == 3u);
+    CHECK(mem.read_word(kDst + 16).value == 0u);   // not there yet
+
+    dma.on_cycles(6);
+    CHECK_FALSE(dma.channel_busy(0));
+    CHECK(dma.trans_count(0) == 0u);
+    CHECK((dma.intr() & 1u) != 0);
+}
+
+TEST_CASE_FIXTURE(DmaFix, "a DMA pacing timer throttles the transfer rate") {
+    for (unsigned i = 0; i < 4; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, 0xAA00u + i) == BusStatus::Ok);
+
+    wr(0x420, (1u << 16) | 3u);             // TIMER0: X=1, Y=3 -> 1 element / 3 clocks
+    program_no_pump(1, kSrc, kDst, 4, ctrl(2, true, true, 1, false, false, /*treq=TIMER0*/0x3Bu));
+
+    dma.on_cycles(2);
+    CHECK(dma.remaining(1) == 4u);          // nothing yet (2 < 3 clocks)
+    dma.on_cycles(1);
+    CHECK(dma.remaining(1) == 3u);          // one element after 3 clocks
+    dma.on_cycles(9);
+    CHECK_FALSE(dma.channel_busy(1));       // 3 more elements over 9 clocks
+}
+
+TEST_CASE_FIXTURE(DmaFix, "CHAN_ABORT stops a paced transfer mid-flight") {
+    for (unsigned i = 0; i < 20; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, i) == BusStatus::Ok);
+
+    program_no_pump(2, kSrc, kDst, 20, ctrl(2, true, true, 2));
+    dma.on_cycles(5);
+    CHECK(dma.remaining(2) == 15u);
+
+    wr(0x444, 1u << 2);                     // CHAN_ABORT channel 2
+    CHECK_FALSE(dma.channel_busy(2));
+    CHECK(dma.remaining(2) == 0u);
+    dma.on_cycles(100);                     // stays aborted
+    CHECK(mem.read_word(kDst + 4 * 5).value == 0u);   // element 5 never copied
 }

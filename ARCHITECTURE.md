@@ -237,34 +237,41 @@ that exist are the high-register `MOV`/`ADD`/`CMP`, `ADR`, and `ADD`/`SUB SP`.
 
 ### 2.2 Register Space Allocation
 
-| Address | Size | Component | Notes |
-|---------|------|-----------|-------|
-| 0x40000000 - 0x40003FFF | 16 KB | System Control Space (SCS) | NVIC, MPU, DCB |
-| 0x40004000 - 0x40013FFF | 64 KB | (Reserved) | |
-| 0x40014000 - 0x40017FFF | 16 KB | GPIO | Controls 28 GPIO pins |
-| 0x40018000 - 0x4001BFFF | 16 KB | Watchdog | Watchdog timer |
-| 0x4001C000 - 0x4001FFFF | 16 KB | Clock | Clock manager, PLL |
-| 0x40020000 - 0x4002BFFF | 48 KB | (Reserved) | |
-| 0x4002C000 - 0x4002FFFF | 16 KB | RTC | Real-time clock |
-| 0x40030000 - 0x40033FFF | 16 KB | (Reserved) | |
-| 0x40034000 - 0x40037FFF | 16 KB | UART0 | Serial interface 0 |
-| 0x40038000 - 0x4003BFFF | 16 KB | UART1 | Serial interface 1 |
-| 0x4003C000 - 0x4003FFFF | 16 KB | SPI0 | SPI interface 0 |
-| 0x40040000 - 0x40043FFF | 16 KB | SPI1 | SPI interface 1 |
-| 0x40044000 - 0x40047FFF | 16 KB | I2C0 | I2C interface 0 |
-| 0x40048000 - 0x4004BFFF | 16 KB | I2C1 | I2C interface 1 |
-| 0x4004C000 - 0x4004FFFF | 16 KB | ADC | Analog-to-Digital |
-| 0x40050000 - 0x40053FFF | 16 KB | PWM | PWM controller |
-| 0x40054000 - 0x40057FFF | 16 KB | Timer | Timers/Counters |
-| 0x40058000 - 0x4005BFFF | 16 KB | (Reserved) | |
-| 0x4005C000 - 0x4005FFFF | 16 KB | DMA | DMA controller |
-| 0x40060000 - 0x4013FFFF | ~3 MB | (Reserved) | |
-| 0x50000000 - 0x5000BFFF | 48 KB | USB DPRAM | USB data RAM |
-| 0x5000C000 - 0x500FFFFF | ~960 KB | (Reserved) | |
-| 0x50100000 - 0x501FFFFF | 1 MB | USBCTRL | USB controller |
-| 0x50200000 - 0x502FFFFF | 1 MB | PIO0 | Programmable I/O block 0 |
-| 0x50300000 - 0x503FFFFF | 1 MB | PIO1 | Programmable I/O block 1 |
-| 0x50400000 - 0xDFFFFFFF | - | (Reserved) | |
+Base addresses per the RP2040 datasheet 2.2. A **bold** row is modelled by the
+simulator; the rest are decoded as unmapped register space.
+
+| Base | Component | Modelled | Notes |
+|------|-----------|----------|-------|
+| **0x40000000** | **SYSINFO** | yes | CHIP_ID / PLATFORM / GITREF (read-only) |
+| 0x40004000 | SYSCFG | no | |
+| **0x40008000** | **CLOCKS** | yes | 10 clock generators (functional) |
+| **0x4000C000** | **RESETS** | yes | RESET / RESET_DONE (all peripherals "ready") |
+| 0x40010000 | PSM | no | power-on state machine |
+| **0x40014000** | **IO_BANK0** | yes | GPIOx_CTRL FUNCSEL + per-pin interrupts |
+| 0x40018000 | IO_QSPI | no | |
+| **0x4001C000** | **PADS_BANK0** | yes | pulls -> Gpio; drive/schmitt stored |
+| 0x40020000 | PADS_QSPI | no | |
+| **0x40024000** | **XOSC** | yes | STABLE/ENABLED once the enable magic is written |
+| **0x40028000** | **PLL_SYS** | yes | CS.LOCK + `output_hz` from FBDIV/POSTDIV |
+| **0x4002C000** | **PLL_USB** | yes | same `Pll` class |
+| 0x40030000 | BUSCTRL | no | bus priority / perf counters |
+| **0x40034000 / 0x40038000** | **UART0 / UART1** | yes | PL011 functional; -> IRQ20 / IRQ21 |
+| **0x4003C000 / 0x40040000** | **SPI0 / SPI1** | yes | PL022 functional; -> IRQ18 / IRQ19 |
+| **0x40044000 / 0x40048000** | **I2C0 / I2C1** | yes | DW_apb_i2c master; -> IRQ23 / IRQ24 |
+| **0x4004C000** | **ADC** | yes | 5 inputs, FIFO, 48 MHz pacing; -> IRQ22 |
+| **0x40050000** | **PWM** | yes | 8 slices, PH_CORRECT; -> IRQ4 |
+| **0x40054000** | **TIMER** | yes | 64-bit us counter, 4 alarms -> IRQ0..3 |
+| **0x40058000** | **WATCHDOG** | yes | down-counter + SCRATCH0..7, TICK |
+| **0x4005C000** | **RTC** | yes | full date/time rollover; -> IRQ25 |
+| **0x40060000** | **ROSC** | yes | boots enabled + stable |
+| 0x40064000 | VREG_AND_CHIP_RESET | no | |
+| 0x4006C000 | TBMAN | no | |
+| **0x50000000** | **DMA** | yes | 12 channels, DREQ pacing; -> IRQ11 / IRQ12 |
+| 0x50100000 / 0x50110000 | USBCTRL_DPRAM / _REGS | no | USB device/host |
+| **0x50200000 / 0x50300000** | **PIO0 / PIO1** | yes | 4 SMs each; -> IRQ7..10 |
+| 0x50400000 | XIP_AUX | no | |
+| **0xD0000000** | **SIO** | yes | CPUID, GPIO, inter-core FIFO, 32 spinlocks |
+| **0xE000E000** | **SCS** (per core) | yes | SysTick, NVIC, SCB - banked per core |
 
 ### 2.3 Access Sizes & Alignment
 
@@ -838,6 +845,31 @@ struct NVIC {
     } sys_tick;
 };
 ```
+
+See §5.3 for the per-core NVIC model. RP2040 IRQ numbers used by the
+simulator: TIMER 0-3, PWM 4, PIO0 7-8, PIO1 9-10, DMA 11-12, IO_BANK0 13,
+SIO_PROC0/1 15-16, SPI0/1 18-19, UART0/1 20-21, ADC 22, I2C0/1 23-24, RTC 25.
+
+### 4.8 DMA (12 channels, 0x50000000)
+
+Each channel: `READ_ADDR`, `WRITE_ADDR`, `TRANS_COUNT`, `CTRL` mirrored through
+four alias groups; a write to the last register of a group is the trigger.
+
+A trigger **arms** the transfer; `Dma::on_cycles()` (called from
+`Simulator::step()`) then moves elements according to `CTRL.TREQ_SEL`:
+
+| TREQ_SEL | Rate |
+|----------|------|
+| 0x3F (PERMANENT) | 1 element / clock |
+| 0x3B-0x3E (TIMER0-3) | `X / Y` elements per clock, from the pacing-timer register at 0x420 + 4*n (`X<<16 | Y`) |
+| 0x00-0x3A (a peripheral DREQ) | 1 element every `dreq_divisor()` clocks (approximation - no FIFO-level handshake) |
+
+Per element: size (1/2/4 B), `INCR_READ`/`INCR_WRITE`, `RING_SIZE`/`RING_SEL`
+wrap, `BSWAP`; a bus fault sets `READ_ERROR`/`WRITE_ERROR` and ends the
+transfer. On completion: `TRANS_COUNT` reads back 0, `INTR` bit set (unless
+`IRQ_QUIET`), then `CHAIN_TO` triggers the next channel. `CHAN_ABORT` stops a
+running transfer immediately; `TRANS_COUNT` reads the live remaining count
+while `BUSY`.
 
 ---
 

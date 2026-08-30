@@ -131,6 +131,7 @@ ExecStatus Simulator::step() {
         pio1_.tick();
     }
     timer_.on_cycles(spent);
+    dma_.on_cycles(spent);
     adc_.on_cycles(spent);
     pwm_.on_cycles(spent);
     watchdog_.on_cycles(spent);
