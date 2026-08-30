@@ -75,6 +75,10 @@ private:
     Rate rate_for(const Channel& c) const;
     void refresh_irqs();
 
+    // Sniff (datasheet 2.5.5.2): fold one transferred element into SNIFF_DATA.
+    void sniff_feed(unsigned ch, std::uint32_t value, unsigned size);
+    std::uint32_t sniff_data_out() const;   // applies OUT_REV / OUT_INV
+
     InterruptController nvic_;
     Memory& mem_;
     std::array<Channel, kNumChannels> chan_{};
@@ -82,6 +86,8 @@ private:
     std::array<std::uint32_t, 2> inte_{};
     std::array<std::uint32_t, 2> intf_{};
     std::array<std::uint32_t, 4> pacing_timer_{};  // DMA TIMER0..3 (X<<16 | Y)
+    std::uint32_t sniff_ctrl_ = 0;                 // EN|DMACH|CALC|BSWAP|OUT_REV|OUT_INV
+    std::uint32_t sniff_data_ = 0;                 // running checksum accumulator
     std::uint32_t dreq_divisor_ = 2;
     unsigned chain_depth_ = 0;                // guard against 0-length chain loops
 };

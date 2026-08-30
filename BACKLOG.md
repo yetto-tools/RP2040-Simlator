@@ -434,7 +434,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 5: ADC + Advanced Interrupts (Week 8)
 
-#### P4.4: DMA Controller (0x50000000)  [DONE bar sniff CRC]
+#### P4.4: DMA Controller (0x50000000)  [DONE]
 - [x] `Dma` BusPeripheral (`src/peripherals/dma.{h,cpp}`), 12 channels
 - [x] READ_ADDR / WRITE_ADDR / TRANS_COUNT / CTRL + all four alias groups,
       trigger on the last register of each alias
@@ -450,8 +450,13 @@ Week 12:    PHASE 9 - Documentation & Release
       (0x420..0x42C); a peripheral DREQ is approximated as one element every
       `dreq_divisor()` clocks (no FIFO-level handshake). TRANS_COUNT reads the
       live remaining count while BUSY.
-- [ ] Sniff CRC (CRC32/16, bit-reverse, seed) - not started
-- **Tests**: `tests/unit/test_dma.cpp` (11 cases)
+- [x] Sniff (SNIFF_CTRL @ 0x434 / SNIFF_DATA @ 0x438): folds every element of
+      the selected channel (gated by CTRL.SNIFF_EN + SNIFF_CTRL.DMACH) into the
+      accumulator. CALC 0x0/0x1 = CRC-32 / CRC-32R, 0x2/0x3 = CRC-16-CCITT /
+      reversed, 0xE = XOR reduction, 0xF = sum; BSWAP pre-swap; OUT_REV /
+      OUT_INV on read-back. Verified against zlib crc32("123456789") ==
+      0xCBF43926 and CRC-16/CCITT-FALSE == 0x29B1.
+- **Tests**: `tests/unit/test_dma.cpp` (15 cases)
 - **Files**: `src/peripherals/dma.{h,cpp}`
 - **Design**: RP2040 datasheet 2.5
 

@@ -20,6 +20,7 @@ constexpr std::uint32_t kCTRL_WRITE_ERROR = 1u << 29;
 constexpr std::uint32_t kCTRL_READ_ERROR  = 1u << 30;
 
 constexpr std::uint32_t kTREQ_PERMANENT = 0x3Fu;
+constexpr std::uint32_t kCTRL_SNIFF_EN = 1u << 23;
 
 // Shared-register offsets (from kBase + 0x400).
 enum : std::uint32_t {
@@ -27,8 +28,26 @@ enum : std::uint32_t {
     kINTE1 = 0x414, kINTF1 = 0x418, kINTS1 = 0x41C,
     kTIMER0 = 0x420,  // TIMER0..3 at 0x420,0x424,0x428,0x42C
     kMULTI_CHAN_TRIGGER = 0x430,
+    kSNIFF_CTRL = 0x434, kSNIFF_DATA = 0x438,
     kCHAN_ABORT = 0x444, kN_CHANNELS = 0x448,
 };
+
+// SNIFF_CTRL fields.
+constexpr std::uint32_t kSNIFF_EN = 1u << 0;
+constexpr unsigned      kSNIFF_DMACH_LSB = 1;   // [4:1]
+constexpr unsigned      kSNIFF_CALC_LSB = 5;    // [8:5]
+constexpr std::uint32_t kSNIFF_BSWAP = 1u << 9;
+constexpr std::uint32_t kSNIFF_OUT_REV = 1u << 10;
+constexpr std::uint32_t kSNIFF_OUT_INV = 1u << 11;
+
+std::uint32_t bit_reverse32(std::uint32_t v) {
+    v = ((v & 0xFFFF0000u) >> 16) | ((v & 0x0000FFFFu) << 16);
+    v = ((v & 0xFF00FF00u) >> 8)  | ((v & 0x00FF00FFu) << 8);
+    v = ((v & 0xF0F0F0F0u) >> 4)  | ((v & 0x0F0F0F0Fu) << 4);
+    v = ((v & 0xCCCCCCCCu) >> 2)  | ((v & 0x33333333u) << 2);
+    v = ((v & 0xAAAAAAAAu) >> 1)  | ((v & 0x55555555u) << 1);
+    return v;
+}
 
 // Which of {READ, WRITE, COUNT, CTRL} each alias slot maps to.
 enum Reg { R_READ, R_WRITE, R_COUNT, R_CTRL };
@@ -69,6 +88,66 @@ Dma::Rate Dma::rate_for(const Channel& c) const {
     return {1, dreq_divisor_};                 // a peripheral DREQ (approximated)
 }
 
+void Dma::sniff_feed(unsigned ch, std::uint32_t value, unsigned size) {
+    if ((sniff_ctrl_ & kSNIFF_EN) == 0) return;
+    if (((sniff_ctrl_ >> kSNIFF_DMACH_LSB) & 0xFu) != ch) return;
+    if ((chan_[ch].ctrl & kCTRL_SNIFF_EN) == 0) return;
+
+    const unsigned calc = (sniff_ctrl_ >> kSNIFF_CALC_LSB) & 0xFu;
+    if (sniff_ctrl_ & kSNIFF_BSWAP) value = byteswap(value, size == 8 ? 4 : size);
+
+    // Simple accumulators operate on the whole element.
+    if (calc == 0xF) { sniff_data_ += value; return; }             // sum
+    if (calc == 0xE) { sniff_data_ ^= value; return; }             // XOR reduction
+
+    // The CRC modes fold the element in one byte at a time, LSB byte first.
+    const unsigned nbytes = (size == 8) ? 4u : size;
+    for (unsigned i = 0; i < nbytes; ++i) {
+        const std::uint8_t b = static_cast<std::uint8_t>(value >> (8u * i));
+        switch (calc) {
+            case 0x0: {  // CRC-32, bit-normal, poly 0x04C11DB7
+                sniff_data_ ^= static_cast<std::uint32_t>(b) << 24;
+                for (int k = 0; k < 8; ++k)
+                    sniff_data_ = (sniff_data_ & 0x80000000u)
+                        ? (sniff_data_ << 1) ^ 0x04C11DB7u : (sniff_data_ << 1);
+                break;
+            }
+            case 0x1: {  // CRC-32, bit-reversed, reflected poly 0xEDB88320
+                sniff_data_ ^= b;
+                for (int k = 0; k < 8; ++k)
+                    sniff_data_ = (sniff_data_ & 1u)
+                        ? (sniff_data_ >> 1) ^ 0xEDB88320u : (sniff_data_ >> 1);
+                break;
+            }
+            case 0x2: {  // CRC-16-CCITT, bit-normal, poly 0x1021
+                std::uint32_t c = sniff_data_ & 0xFFFFu;
+                c ^= static_cast<std::uint32_t>(b) << 8;
+                for (int k = 0; k < 8; ++k)
+                    c = (c & 0x8000u) ? ((c << 1) ^ 0x1021u) : (c << 1);
+                sniff_data_ = c & 0xFFFFu;
+                break;
+            }
+            case 0x3: {  // CRC-16-CCITT, bit-reversed, reflected poly 0x8408
+                std::uint32_t c = sniff_data_ & 0xFFFFu;
+                c ^= b;
+                for (int k = 0; k < 8; ++k)
+                    c = (c & 1u) ? ((c >> 1) ^ 0x8408u) : (c >> 1);
+                sniff_data_ = c & 0xFFFFu;
+                break;
+            }
+            default:
+                break;  // reserved CALC value: no-op
+        }
+    }
+}
+
+std::uint32_t Dma::sniff_data_out() const {
+    std::uint32_t v = sniff_data_;
+    if (sniff_ctrl_ & kSNIFF_OUT_REV) v = bit_reverse32(v);
+    if (sniff_ctrl_ & kSNIFF_OUT_INV) v = ~v;
+    return v;
+}
+
 bool Dma::transfer_one(unsigned ch) {
     Channel& c = chan_[ch];
     const std::uint32_t ctrl = c.ctrl;
@@ -99,6 +178,8 @@ bool Dma::transfer_one(unsigned ch) {
         default: ws = mem_.write_word(c.write_addr, value); break;
     }
     if (ws != BusStatus::Ok) { c.ctrl |= kCTRL_WRITE_ERROR; return false; }
+
+    sniff_feed(ch, value, step);
 
     if (incr_read) {
         if (ring_mask != 0 && !ring_on_write) {
@@ -192,6 +273,8 @@ BusResult<std::uint32_t> Dma::reg_read(std::uint32_t offset, BusWidth) {
         return {pacing_timer_[(offset - kTIMER0) / 4u], BusStatus::Ok};
     }
     switch (offset) {
+        case kSNIFF_CTRL: return {sniff_ctrl_, BusStatus::Ok};
+        case kSNIFF_DATA: return {sniff_data_out(), BusStatus::Ok};
         case kINTR:  return {intr_, BusStatus::Ok};
         case kINTE0: return {inte_[0], BusStatus::Ok};
         case kINTF0: return {intf_[0], BusStatus::Ok};
@@ -225,6 +308,8 @@ BusStatus Dma::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         return BusStatus::Ok;
     }
     switch (offset) {
+        case kSNIFF_CTRL: sniff_ctrl_ = value & 0xFFFu; break;
+        case kSNIFF_DATA: sniff_data_ = value; break;   // seed / clear
         case kINTR:
             intr_ &= ~value;                 // write-1-clear
             refresh_irqs();

@@ -871,6 +871,14 @@ transfer. On completion: `TRANS_COUNT` reads back 0, `INTR` bit set (unless
 running transfer immediately; `TRANS_COUNT` reads the live remaining count
 while `BUSY`.
 
+**Sniff** (`SNIFF_CTRL` 0x434 / `SNIFF_DATA` 0x438): when `SNIFF_CTRL.EN` and
+`SNIFF_CTRL.DMACH == ch` and the channel's `CTRL.SNIFF_EN`, every transferred
+element is folded into `SNIFF_DATA`. `CALC` selects CRC-32 (`0x0`), CRC-32
+bit-reversed (`0x1`), CRC-16-CCITT (`0x2` / `0x3` reversed), XOR reduction
+(`0xE`) or sum (`0xF`); `BSWAP` byte-swaps first; `OUT_REV` / `OUT_INV`
+transform the value on read-back. Seed by writing `SNIFF_DATA`. The reversed
+CRC-32 with seed `0xFFFFFFFF` + `OUT_INV` matches zlib `crc32()`.
+
 ---
 
 ## 5. Interrupt System

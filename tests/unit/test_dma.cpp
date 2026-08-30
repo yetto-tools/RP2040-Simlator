@@ -19,7 +19,7 @@ constexpr std::uint32_t kDst = 0x20002000u;
 // CTRL builder. `treq` defaults to PERMANENT (0x3f = unpaced, one element/clock).
 constexpr std::uint32_t ctrl(unsigned data_size, bool incr_r, bool incr_w,
                              unsigned chain_to, bool bswap = false, bool quiet = false,
-                             unsigned treq = 0x3Fu) {
+                             unsigned treq = 0x3Fu, bool sniff = false) {
     return 1u                                   // EN
          | (data_size << 2)
          | (incr_r ? (1u << 4) : 0u)
@@ -27,7 +27,8 @@ constexpr std::uint32_t ctrl(unsigned data_size, bool incr_r, bool incr_w,
          | (chain_to << 11)
          | (treq << 15)
          | (quiet ? (1u << 21) : 0u)
-         | (bswap ? (1u << 22) : 0u);
+         | (bswap ? (1u << 22) : 0u)
+         | (sniff ? (1u << 23) : 0u);
 }
 
 struct DmaFix {
@@ -187,6 +188,60 @@ TEST_CASE_FIXTURE(DmaFix, "a DMA pacing timer throttles the transfer rate") {
     CHECK(dma.remaining(1) == 3u);          // one element after 3 clocks
     dma.on_cycles(9);
     CHECK_FALSE(dma.channel_busy(1));       // 3 more elements over 9 clocks
+}
+
+TEST_CASE_FIXTURE(DmaFix, "sniff: CRC-32 (reversed) of \"123456789\" == 0xCBF43926") {
+    const char* msg = "123456789";
+    for (unsigned i = 0; i < 9; ++i)
+        REQUIRE(mem.write_byte(kSrc + i, static_cast<std::uint8_t>(msg[i])) == BusStatus::Ok);
+
+    wr(0x434, (1u << 0) | (0u << 1) | (0x1u << 5) | (1u << 11));  // EN, DMACH0, CALC=CRC32R, OUT_INV
+    wr(0x438, 0xFFFFFFFFu);                                       // seed
+    program(0, kSrc, kDst, 9, ctrl(/*byte*/0, true, false, 0, false, false, 0x3Fu, /*sniff=*/true));
+
+    CHECK(rd(0x438) == 0xCBF43926u);   // == zlib crc32("123456789")
+}
+
+TEST_CASE_FIXTURE(DmaFix, "sniff: CRC-16-CCITT of \"123456789\" == 0x29B1") {
+    const char* msg = "123456789";
+    for (unsigned i = 0; i < 9; ++i)
+        REQUIRE(mem.write_byte(kSrc + i, static_cast<std::uint8_t>(msg[i])) == BusStatus::Ok);
+
+    wr(0x434, (1u << 0) | (0x2u << 5));   // EN, DMACH0, CALC = CRC-16-CCITT
+    wr(0x438, 0x0000FFFFu);               // init 0xFFFF
+    program(0, kSrc, kDst, 9, ctrl(0, true, false, 0, false, false, 0x3Fu, true));
+
+    CHECK((rd(0x438) & 0xFFFFu) == 0x29B1u);
+}
+
+TEST_CASE_FIXTURE(DmaFix, "sniff: sum and XOR reduction modes") {
+    for (unsigned i = 0; i < 4; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, 0x10u + i) == BusStatus::Ok);
+
+    wr(0x434, (1u << 0) | (0xFu << 5));   // CALC = sum
+    wr(0x438, 0u);
+    program(0, kSrc, kDst, 4, ctrl(2, true, false, 0, false, false, 0x3Fu, true));
+    CHECK(rd(0x438) == (0x10u + 0x11u + 0x12u + 0x13u));
+
+    wr(0x434, (1u << 0) | (0xEu << 5));   // CALC = XOR reduction
+    wr(0x438, 0u);
+    program(1, kSrc, kDst, 4, ctrl(2, true, false, 1, false, false, 0x3Fu, true) | 0u);
+    // note: SNIFF_CTRL.DMACH still 0 -> channel 1 is NOT sniffed
+    CHECK(rd(0x438) == 0u);
+
+    wr(0x434, (1u << 0) | (1u << 1) | (0xEu << 5));   // DMACH = 1
+    wr(0x438, 0u);
+    program(1, kSrc, kDst, 4, ctrl(2, true, false, 1, false, false, 0x3Fu, true));
+    CHECK(rd(0x438) == (0x10u ^ 0x11u ^ 0x12u ^ 0x13u));
+}
+
+TEST_CASE_FIXTURE(DmaFix, "sniff: OUT_REV bit-reverses the read-back value") {
+    REQUIRE(mem.write_word(kSrc, 0x12345678u) == BusStatus::Ok);
+    wr(0x434, (1u << 0) | (0xFu << 5) | (1u << 10));   // sum + OUT_REV
+    wr(0x438, 0u);
+    program(0, kSrc, kDst, 1, ctrl(2, true, false, 0, false, false, 0x3Fu, true));
+    // accumulator holds 0x12345678; read-back is its bit-reversal.
+    CHECK(rd(0x438) == 0x1E6A2C48u);
 }
 
 TEST_CASE_FIXTURE(DmaFix, "CHAN_ABORT stops a paced transfer mid-flight") {
