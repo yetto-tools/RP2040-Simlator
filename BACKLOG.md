@@ -523,6 +523,11 @@ Week 12:    PHASE 9 - Documentation & Release
 #### P6.1: Oscillators & PLL (accurate)
 - [x] XOSC (12 MHz crystal) - functional model (STABLE/ENABLED)
 - [x] ROSC (ring oscillator) - functional model (STABLE/BADWRITE/RANDOMBIT)
+- [x] CPU/USB PLL FBDIV + POSTDIV1/POSTDIV2 -> `Pll::output_hz(ref)`
+      (VCO = ref*FBDIV, out = VCO/(PD1*PD2)); 0 unless locked. pico-sdk's
+      125 MHz recipe (FBDIV 125, /6, /2 from 12 MHz) verified
+- [ ] Feed the derived clk_sys into peripheral pacing (today fixed 125 MHz;
+      pico-sdk always configures exactly this, so low priority)
 - [ ] CPU PLL
   - [ ] Feedback divider (FBDIV)
   - [ ] Post-dividers (POSTDIV1, POSTDIV2)
@@ -953,9 +958,9 @@ Week 12:    PHASE 9 - Documentation & Release
 
 **Tasks**:
 - [x] P6.1.1: XOSC & ROSC (functional models)
-- [ ] P6.1.2: CPU PLL (1200 MHz  125 MHz)
-- [ ] P6.1.3: USB PLL (480 MHz  48 MHz)
-- [ ] P6.1.4: Lock detection
+- [x] P6.1.2: CPU PLL (FBDIV + post-dividers -> output_hz)
+- [x] P6.1.3: USB PLL (same Pll class)
+- [x] P6.1.4: Lock detection
 - [ ] P6.2.1: Glitchless mux
 - [ ] P6.3.1: Clock dividers
 - [ ] PIO clock divider refinement

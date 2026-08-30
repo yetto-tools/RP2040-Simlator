@@ -62,6 +62,15 @@ public:
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
+    // Derived configuration (datasheet 2.18.2): VCO = ref * FBDIV,
+    // output = VCO / (POSTDIV1 * POSTDIV2). Returns 0 when the PLL is not
+    // locked or a divider is unprogrammed.
+    bool locked() const;
+    unsigned feedback_divider() const;
+    unsigned postdiv1() const;
+    unsigned postdiv2() const;
+    std::uint64_t output_hz(std::uint64_t ref_hz) const;
+
 private:
     std::uint32_t base_;
     std::uint32_t cs_ = 0;

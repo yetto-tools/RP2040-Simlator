@@ -129,6 +129,22 @@ BusStatus Pll::reg_write(std::uint32_t reg, std::uint32_t value, BusWidth) {
     return BusStatus::Ok;
 }
 
+bool Pll::locked() const {
+    return (cs_ & kPLL_CS_BYPASS) == 0 && (pwr_ & 0x1u) == 0;
+}
+
+unsigned Pll::postdiv1() const { return (prim_ >> 16) & 0x7u; }
+unsigned Pll::postdiv2() const { return (prim_ >> 12) & 0x7u; }
+unsigned Pll::feedback_divider() const { return fbdiv_ & 0xFFFu; }
+
+std::uint64_t Pll::output_hz(std::uint64_t ref_hz) const {
+    const unsigned fb = feedback_divider();
+    const unsigned pd1 = postdiv1();
+    const unsigned pd2 = postdiv2();
+    if (!locked() || fb == 0 || pd1 == 0 || pd2 == 0) return 0;
+    return ref_hz * fb / (static_cast<std::uint64_t>(pd1) * pd2);
+}
+
 // --- CLOCKS ------------------------------------------------------------
 // Each generator occupies 0x0C bytes: CTRL, DIV, SELECTED.
 namespace { constexpr std::uint32_t kGenStride = 0x0C; }

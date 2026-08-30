@@ -35,6 +35,25 @@ TEST_CASE("PLL reports LOCK when powered and not bypassed") {
     CHECK((mem.read_word(Pll::kSysBase + 0x00).value & (1u << 31)) == 0);  // lock drops
 }
 
+TEST_CASE("PLL derives the pico-sdk 125 MHz clk_sys from a 12 MHz reference") {
+    Memory mem;
+    Pll pll(Pll::kSysBase);
+    REQUIRE(pll.attach(mem));
+
+    // pico-sdk default: FBDIV=125, POSTDIV1=6, POSTDIV2=2 -> 12M*125/12 = 125M.
+    mem.write_word(Pll::kSysBase + 0x08, 125u);                       // FBDIV_INT
+    mem.write_word(Pll::kSysBase + 0x0C, (6u << 16) | (2u << 12));    // PRIM
+    mem.write_word(Pll::kSysBase + 0x04, 0u);                        // PWR: powered
+
+    CHECK(pll.feedback_divider() == 125u);
+    CHECK(pll.postdiv1() == 6u);
+    CHECK(pll.postdiv2() == 2u);
+    CHECK(pll.output_hz(12'000'000u) == 125'000'000u);
+
+    mem.write_word(Pll::kSysBase + 0x00, 1u << 8);                    // BYPASS
+    CHECK(pll.output_hz(12'000'000u) == 0u);                         // not locked
+}
+
 TEST_CASE("CLOCKS: SELECTED follows CTRL.SRC and DIV round-trips") {
     Memory mem;
     Clocks clk;
