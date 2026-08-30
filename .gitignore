@@ -1,0 +1,25 @@
+# Build output
+/build/
+/build-*/
+/out/
+cmake-build-*/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test / coverage artifacts
+*.gcda
+*.gcno
+*.profraw
+coverage/
+
+# Stray files
+Nuevo Documento de texto.txt

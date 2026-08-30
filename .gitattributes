@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.png binary
+*.elf binary
+*.uf2 binary
+*.bin binary
+
+# Vendored third-party code: keep as-is, exclude from language stats/diffs.
+tests/vendor/doctest.h linguist-vendored -diff
