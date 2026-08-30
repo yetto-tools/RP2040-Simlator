@@ -20,6 +20,7 @@
 #include "peripherals/gpio.h"
 #include "peripherals/iobank0.h"
 #include "peripherals/sio.h"
+#include "peripherals/spi.h"
 #include "peripherals/timer.h"
 #include "peripherals/uart.h"
 #include "pio/pio_block.h"
@@ -64,6 +65,7 @@ public:
     Dma& dma() { return dma_; }
     Adc& adc() { return adc_; }
     Uart& uart(unsigned n) { return n == 0 ? uart0_ : uart1_; }
+    Spi& spi(unsigned n) { return n == 0 ? spi0_ : spi1_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -79,6 +81,8 @@ private:
     Adc adc_{cpu_};
     Uart uart0_{cpu_, Uart::kUart0Base, Uart::kUart0Irq};
     Uart uart1_{cpu_, Uart::kUart1Base, Uart::kUart1Irq};
+    Spi spi0_{cpu_, Spi::kSpi0Base, Spi::kSpi0Irq};
+    Spi spi1_{cpu_, Spi::kSpi1Base, Spi::kSpi1Irq};
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};

@@ -349,28 +349,20 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P1.3, P1.4
 
-#### P4.2: UART1 Controller
-- [ ] Identical to UART0
-- **Tests**: 10+ (differential tests vs UART0)
-- **Effort**: 10 hours
-- **Priority**: HIGH
-- **Dependencies**: P4.1
+#### P4.2: UART1 Controller  [DONE]
+- [x] Second `Uart` instance (see P4.1); UART1_IRQ = IRQ21
 
-#### P4.3: SPI0 Controller
-- [ ] Master/Slave mode
-- [ ] Clock polarity (CPOL)
-- [ ] Clock phase (CPHA) - modes 0-3
-- [ ] Frame size (4-16 bits)
-- [ ] Baud rate prescaler
-- [ ] TX FIFO (8 deep)
-- [ ] RX FIFO (8 deep)
-- [ ] Chip select control
-- [ ] Loopback mode
-- [ ] Bit-accurate transmission timing
-- **Tests**: 25+ SPI tests
-- **Effort**: 25 hours
-- **Priority**: HIGH
-- **Dependencies**: P1.3
+#### P4.3: SPI0 / SPI1 Controller (PL022)  [IN PROGRESS]
+- [x] `Spi` BusPeripheral (`src/peripherals/spi.{h,cpp}`) @ 0x4003C000 /
+      0x40040000; SPI0_IRQ = IRQ18, SPI1_IRQ = IRQ19
+- [x] SSPDR write = full-duplex byte transfer: MOSI -> output log +
+      on_transfer() callback; MISO from callback / feed() queue / 0xFF idle;
+      internal loopback (CR1.LBM)
+- [x] SSPSR (TFE/TNF always, RNE/RFF from the 8-deep RX FIFO), SSPCR0/CR1,
+      SSPIMSC / SSPRIS / SSPMIS; RXRIS + TXRIS -> NVIC
+- [ ] CPOL/CPHA modes, frame size 4-16, bit-rate timing, chip-select lines
+- **Tests**: `tests/unit/test_spi.cpp` (7 cases)
+- **Design**: RP2040 datasheet 4.4
 
 #### P4.4: SPI1 Controller
 - [ ] Identical to SPI0
