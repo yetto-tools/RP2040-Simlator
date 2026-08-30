@@ -19,6 +19,7 @@
 #include "peripherals/iobank0.h"
 #include "peripherals/sio.h"
 #include "peripherals/timer.h"
+#include "peripherals/uart.h"
 #include "pio/pio_block.h"
 #include "pio/pio_registers.h"
 #include "rp2040.h"
@@ -58,6 +59,7 @@ public:
     Cpu& cpu() { return cpu_; }
     Gpio& gpio() { return gpio_; }
     Timer& timer() { return timer_; }
+    Uart& uart(unsigned n) { return n == 0 ? uart0_ : uart1_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -69,6 +71,8 @@ private:
     Sio sio_{gpio_};
     IoBank0 iobank_{gpio_};
     Timer timer_{cpu_};
+    Uart uart0_{cpu_, Uart::kUart0Base, Uart::kUart0Irq};
+    Uart uart1_{cpu_, Uart::kUart1Base, Uart::kUart1Irq};
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};

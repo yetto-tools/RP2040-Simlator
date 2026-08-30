@@ -7,6 +7,8 @@ Simulator::Simulator() {
     sio_.attach(mem_);
     iobank_.attach(mem_);
     timer_.attach(mem_);
+    uart0_.attach(mem_);
+    uart1_.attach(mem_);
     pio0_regs_.attach(mem_);
     pio1_regs_.attach(mem_);
 }

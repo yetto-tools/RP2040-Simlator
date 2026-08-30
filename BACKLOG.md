@@ -332,19 +332,17 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 4: UART + SPI (Week 7)
 
-#### P4.1: UART0 Controller
-- [ ] Configurable baud rate (300-3M)
-- [ ] Data bits (5-8)
-- [ ] Stop bits (1-2)
-- [ ] Parity (none, even, odd)
-- [ ] TX FIFO (16 deep)
-- [ ] RX FIFO (16 deep)
-- [ ] Bit-accurate transmission timing
-- [ ] Bit-accurate reception timing
-- [ ] Line break detection
-- [ ] Framing error detection
-- [ ] Overrun detection
-- **Tests**: 30+ UART tests
+#### P4.1: UART0 / UART1 Controller (PL011)  [IN PROGRESS]
+- [x] `Uart` BusPeripheral (`src/peripherals/uart.{h,cpp}`) @ 0x40034000 /
+      0x40038000; UART0_IRQ = IRQ20, UART1_IRQ = IRQ21
+- [x] UARTDR TX -> output log + on_transmit() callback; RX FIFO (32-deep)
+      fed by feed(); UARTFR TXFE/RXFE/RXFF
+- [x] UARTCR (UARTEN/TXE/RXE), UARTLCR_H store, UARTIMSC / UARTRIS / UARTMIS /
+      UARTICR; RXRIS + TXRIS level-driven onto the NVIC
+- [x] Wired into Simulator (both instances)
+- [ ] Baud-rate timing (bit-accurate TX/RX), framing/parity/overrun errors,
+      break detection, DMA request lines
+- **Tests**: `tests/unit/test_uart.cpp` (5 cases)
 - **Effort**: 30 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3, P1.4
