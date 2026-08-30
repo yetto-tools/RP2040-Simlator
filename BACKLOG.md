@@ -68,15 +68,17 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 1: Core CPU + Memory (Weeks 1-2)
 
-#### P1.1: ARM Cortex-M0+ CPU Architecture
-- [ ] Register file (R0-R15, xPSR)
-- [ ] Program counter management
-- [ ] Pipeline simulation (3 stages)
-- [ ] Condition code logic (N, Z, C, V)
-- [ ] Exception vector table
-- **Tests**: 20+ unit tests
+#### P1.1: ARM Cortex-M0+ CPU Architecture  [IN PROGRESS]
+- [x] Register file (R0-R15, banked MSP/PSP, APSR/IPSR/EPSR, CONTROL, PRIMASK)
+- [x] Program counter management (raw PC store, bit-0 masking, advance)
+- [x] Condition code logic (N, Z, C, V) + full ARMv6-M ConditionPassed()
+- [ ] Pipeline simulation (3 stages) - needs the decoder (P1.2)
+- [ ] Exception vector table - moved to P1.4 (NVIC / exceptions.h)
+- **Tests**: 20+ unit tests -> `tests/unit/test_registers.cpp` (17 cases)
 - **Effort**: 40 hours
 - **Priority**: CRITICAL
+- **Design**: ARCHITECTURE.md 1.1-1.2, 1.5 (rewritten for ARMv6-M, not Thumb-2)
+- **Files**: `src/core/registers.{h,cpp}`
 
 #### P1.2: Thumb-2 Instruction Decoder
 - [ ] Load/Store instructions (LDR, STR, LDRB, STRB, etc.)

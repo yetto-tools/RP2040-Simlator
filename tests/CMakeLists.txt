@@ -18,3 +18,4 @@ endfunction()
 
 rp2040_add_test(test_smoke unit/test_smoke.cpp)
 rp2040_add_test(test_memory unit/test_memory.cpp)
+rp2040_add_test(test_registers unit/test_registers.cpp)

@@ -23,32 +23,47 @@
 
 | Property | Value |
 |----------|-------|
-| **ISA** | ARM Thumb-2 (16-bit, 32-bit instructions) |
+| **Architecture** | ARMv6-M |
+| **ISA** | Thumb subset: all 16-bit Thumb encodings + six 32-bit ones (`BL`, `DSB`, `DMB`, `ISB`, `MRS`, `MSR`) |
 | **Pipeline Stages** | 3 (Fetch, Decode, Execute) |
 | **Registers** | 16 × 32-bit + special registers |
 | **Clock** | 125 MHz (configurable) |
 | **Endianness** | Little-endian |
 | **Exception Handling** | NVIC (nested vectored) |
 
+> **Datasheet deviation:** the Cortex-M0+ is **ARMv6-M**, not Thumb-2/ARMv7-M.
+> It has **no** `IT` blocks, `CBZ`/`CBNZ`, `LDRD`/`STRD`, `UMULL`/`SMULL`,
+> `TBB`/`TBH`, or the `Q`/`GE` status flags. Sections 1.4-1.5 below still list
+> some ARMv7-M-only instructions; those are pruned as the decoder (P1.2) lands.
+> `APSR` therefore holds only `N,Z,C,V`.
+
 ### 1.2 Register File
 
+Implemented by `rp2040::RegisterFile` (`src/core/registers.{h,cpp}`).
+
 ```cpp
-struct RegisterFile {
-    uint32_t r[16];      // R0-R15
-    // R0-R12: general purpose
-    // R13: Stack Pointer (SP)
-    // R14: Link Register (LR)
-    // R15: Program Counter (PC)
+// R0-R12   general purpose
+// R13 (SP) banked: MSP / PSP, selected by mode + CONTROL.SPSEL; bits [1:0] RAZ/WI
+// R14 (LR) link register; reset value 0xFFFFFFFF
+// R15 (PC) program counter; bit 0 RAZ/WI in storage (Thumb state via BX/EPSR.T)
 
-    uint32_t xPSR;       // Combined PSR register
-    // Bits [31:24]: N, Z, C, V, Q flags + reserved
-    // Bits [23:16]: GE[3:0] + reserved (DSP extension, not in M0+)
-    // Bits [8:0]: Exception number
+// Program status register (xPSR = APSR | IPSR | EPSR):
+//   APSR  [31:28] = N, Z, C, V           (no Q, no GE on ARMv6-M)
+//   IPSR  [8:0]   = current exception number (0 => Thread mode)
+//   EPSR  [24]    = T (Thumb) bit; always 1 on Cortex-M
 
-    uint32_t msp;        // Main Stack Pointer (Cortex-M specific)
-    uint32_t psp;        // Process Stack Pointer (for RTOS, not used in M0+)
-};
+// Special registers:
+//   CONTROL  bit0 nPRIV (unprivileged Thread), bit1 SPSEL (use PSP in Thread)
+//   PRIMASK  bit0     global interrupt mask (PendSV/SysTick/IRQ)
 ```
+
+Reset: R0-R12 = 0, LR = 0xFFFFFFFF, PC = 0, MSP = PSP = 0, Thread mode,
+EPSR.T = 1, flags clear, CONTROL = 0, PRIMASK = 0. (The CPU core later
+overrides MSP and PC from vector-table entries 0 and 1.)
+
+A program read of R15 architecturally yields *(current instruction + 4)*;
+that pipeline offset is applied by the execute stage, not the register file,
+which stores the raw PC.
 
 ### 1.3 Instruction Pipeline
 
