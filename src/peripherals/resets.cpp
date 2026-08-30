@@ -3,34 +3,23 @@
 namespace rp2040 {
 
 namespace {
-// The RESETS block exposes RESET / WDSEL / RESET_DONE plus the +0x1000/2000/
-// 3000 atomic-alias windows (XOR / set / clear). Handle the aliases here.
 enum : std::uint32_t { kRESET = 0x00, kWDSEL = 0x04, kRESET_DONE = 0x08 };
-
-std::uint32_t apply_alias(std::uint32_t current, std::uint32_t value, std::uint32_t alias) {
-    switch (alias) {
-        case 0x1000: return current ^ value;   // XOR
-        case 0x2000: return current | value;   // set
-        case 0x3000: return current & ~value;  // clear
-        default:     return value;             // normal write
-    }
-}
+constexpr std::uint32_t kAllPeriphs = 0x01FFFFFFu;
 }  // namespace
 
-BusResult<std::uint32_t> Resets::bus_read(std::uint32_t offset, BusWidth) {
-    switch (offset & 0x0FFFu) {
+BusResult<std::uint32_t> Resets::reg_read(std::uint32_t reg, BusWidth) {
+    switch (reg) {
         case kRESET:      return {reset_, BusStatus::Ok};
         case kWDSEL:      return {wdsel_, BusStatus::Ok};
-        case kRESET_DONE: return {~reset_ & 0x01FFFFFFu, BusStatus::Ok};
+        case kRESET_DONE: return {~reset_ & kAllPeriphs, BusStatus::Ok};
         default:          return {0u, BusStatus::Ok};
     }
 }
 
-BusStatus Resets::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
-    const std::uint32_t alias = offset & 0x3000u;
-    switch (offset & 0x0FFFu) {
-        case kRESET: reset_ = apply_alias(reset_, value, alias) & 0x01FFFFFFu; break;
-        case kWDSEL: wdsel_ = apply_alias(wdsel_, value, alias) & 0x01FFFFFFu; break;
+BusStatus Resets::reg_write(std::uint32_t reg, std::uint32_t value, BusWidth) {
+    switch (reg) {
+        case kRESET: reset_ = value & kAllPeriphs; break;
+        case kWDSEL: wdsel_ = value & kAllPeriphs; break;
         default: break;
     }
     return BusStatus::Ok;

@@ -2,7 +2,7 @@
 
 namespace rp2040 {
 
-BusResult<std::uint32_t> IoBank0::bus_read(std::uint32_t offset, BusWidth) {
+BusResult<std::uint32_t> IoBank0::reg_read(std::uint32_t offset, BusWidth) {
     // Each GPIO occupies 8 bytes: +0 = GPIOx_STATUS, +4 = GPIOx_CTRL.
     if (offset < Gpio::kNumPins * 8u) {
         const unsigned pin = offset / 8u;
@@ -16,7 +16,7 @@ BusResult<std::uint32_t> IoBank0::bus_read(std::uint32_t offset, BusWidth) {
     return {0u, BusStatus::Ok};
 }
 
-BusStatus IoBank0::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
+BusStatus IoBank0::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     if (offset < Gpio::kNumPins * 8u && (offset & 4u) != 0) {
         const unsigned pin = offset / 8u;
         ctrl_[pin] = value;

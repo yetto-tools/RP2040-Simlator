@@ -97,6 +97,19 @@ TEST_CASE_FIXTURE(GpioFix, "FUNCSEL routes the pad to PIO0, not SIO") {
     CHECK(gpio.pad_level(7));
 }
 
+TEST_CASE_FIXTURE(GpioFix, "IO_BANK0 atomic SET / CLR aliases work on GPIOx_CTRL") {
+    const std::uint32_t ctrl = IoBank0::kBase + 8u * 8u + 4u;   // GPIO8_CTRL
+    wr(ctrl, Gpio::kFuncSio);
+    // atomic-set OUTOVER bits [9:8] via the +0x2000 alias
+    wr(ctrl + 0x2000u, 0x3u << 8);
+    CHECK((rd(ctrl) & (0x3u << 8)) != 0);
+    CHECK((rd(ctrl) & 0x1Fu) == Gpio::kFuncSio);   // FUNCSEL untouched
+    // atomic-clear it again via the +0x3000 alias
+    wr(ctrl + 0x3000u, 0x3u << 8);
+    CHECK((rd(ctrl) & (0x3u << 8)) == 0);
+    CHECK((rd(ctrl) & 0x1Fu) == Gpio::kFuncSio);
+}
+
 TEST_CASE_FIXTURE(GpioFix, "GPIOx_CTRL reads back and STATUS shows levels") {
     funcsel(2, Gpio::kFuncSio);
     CHECK((rd(IoBank0::kBase + 8u * 2u + 4u) & 0x1Fu) == Gpio::kFuncSio);

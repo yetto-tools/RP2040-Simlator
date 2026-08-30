@@ -92,6 +92,17 @@ TEST_CASE_FIXTURE(PwmFix, "wrap interrupt is gated by INTE and reaches the NVIC"
     CHECK_FALSE(cpu.is_pending(Pwm::kIrqWrap));
 }
 
+TEST_CASE_FIXTURE(PwmFix, "atomic SET alias enables a slice without a read-modify-write") {
+    sreg(6, 0x10, 5);
+    sreg(6, 0x04, 0x010);
+    wr(0x2000u + 0xA0u, 1u << 6);   // EN via the +0x2000 atomic-set alias
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(6) == 1);
+    wr(0x3000u + 0xA0u, 1u << 6);   // clear it again
+    pwm.on_cycles(5);
+    CHECK(pwm.counter(6) == 1);     // frozen
+}
+
 TEST_CASE_FIXTURE(PwmFix, "the global EN register also enables a slice") {
     sreg(5, 0x10, 2);
     sreg(5, 0x04, 0x010);

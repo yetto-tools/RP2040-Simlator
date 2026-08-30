@@ -9,21 +9,21 @@
 
 #include <cstdint>
 
+#include "core/atomic_peripheral.h"
 #include "core/bus.h"
 #include "core/memory.h"
 
 namespace rp2040 {
 
-class Resets : public BusPeripheral {
+class Resets : public AtomicPeripheral {
 public:
     static constexpr std::uint32_t kBase = 0x4000C000u;
-    // 0x1000 of registers + the +0x1000/2000/3000 XOR/SET/CLR alias windows.
-    static constexpr std::uint32_t kSize = 0x4000u;
+    static constexpr std::uint32_t kSize = AtomicPeripheral::kAtomicSize;
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
 
-    BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
-    BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
+    BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
 private:
     std::uint32_t reset_ = 0x01FFFFFFu;  // reset value: everything held in reset

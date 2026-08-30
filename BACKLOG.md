@@ -454,11 +454,11 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Tests**: `tests/unit/test_watchdog.cpp` (5 cases)
 - **Design**: RP2040 datasheet 4.7, 2.14
 
-> **Cross-cutting TODO:** the +0x1000/2000/3000 atomic register aliases
-> (datasheet 2.1.2) are only handled by `Resets` so far. pico-sdk's
-> `hw_set_bits` / `hw_clear_bits` / `hw_xor_bits` use them on every
-> peripheral - a shared `AtomicPeripheral` base (span 0x4000, transform the
-> value before dispatch) should be added and adopted everywhere.
+> **Cross-cutting:** `src/core/atomic_peripheral.h` provides the shared
+> `AtomicPeripheral` base (span 0x4000; XOR/SET/CLR at +0x1000/2000/3000 as a
+> read-modify-write over `reg_read`/`reg_write`). Adopted by `Resets`,
+> `IoBank0`, `Pwm`. TODO: migrate `Scs`, `PioRegisters`, `Timer`, `Dma`,
+> `Adc` too (pico-sdk uses `hw_set_bits` etc. on all of them).
 
 #### P5.4: Real-Time Clock (RTC)
 - [ ] Date/time registers
