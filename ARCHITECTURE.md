@@ -25,7 +25,7 @@
 |----------|-------|
 | **Architecture** | ARMv6-M |
 | **ISA** | Full 16-bit Thumb set + a 6-instruction slice of Thumb-2 (`BL`, `DSB`, `DMB`, `ISB`, `MRS`, `MSR`); not the full ARMv7-M Thumb-2 |
-| **Pipeline Stages** | 3 (Fetch, Decode, Execute) |
+| **Pipeline Stages** | 2 (Fetch, Decode+Execute) - Cortex-M0+, *not* the M0's 3 |
 | **Registers** | 16 × 32-bit + special registers |
 | **Clock** | 125 MHz (configurable) |
 | **Endianness** | Little-endian |
@@ -69,27 +69,27 @@ which stores the raw PC.
 
 ### 1.3 Instruction Pipeline
 
+The Cortex-M0+ has a **two-stage** pipeline (the Cortex-M0 has three). The
+second stage folds decode and execute together, which is why M0+ branches are
+comparatively cheap. The functional model does not pipeline - `Cpu::step()`
+fetches, decodes and executes one instruction atomically - but the **cycle
+counts** it charges (`src/core/timing.{h,cpp}`) are the M0+ figures, so a
+taken branch still costs its pipeline-reload cycles.
+
 ```
 Stage 1 (Fetch):
-├─ Read instruction from memory at PC
-├─ Handle 16/32-bit decoding (Thumb variable-length; ARMv6-M has six 32-bit ops)
-└─ Increment PC (handling Branch/Trap/Exception cases)
+├─ Read halfword from memory at PC
+├─ If a 32-bit prefix, read the second halfword (ARMv6-M has six 32-bit ops)
+└─ PC advances by 2 or 4 (branches/exceptions override)
 
-Stage 2 (Decode):
-├─ Parse opcode
-├─ Identify instruction type
-├─ Extract operands
-└─ Evaluate condition codes (if conditional instruction)
-
-Stage 3 (Execute):
-├─ Perform ALU operation (if applicable)
-├─ Access memory (load/store)
-├─ Update registers
-├─ Update status flags
-└─ Handle exceptions/interrupts
+Stage 2 (Decode + Execute):
+├─ Decode -> DecodedInstr (thumb_decode.cpp)
+├─ Evaluate the condition (Bcc)
+├─ ALU / shift (alu.cpp), memory access (memory.cpp), register + flag updates
+└─ Raise HardFault / SVC / BKPT via ExecStatus (exception entry: P1.4)
 ```
 
-**Pipeline forwarding**: Minimal (only for certain instructions). Not critical for M0+.
+**Pipeline forwarding**: not modelled; not architecturally visible on M0+.
 
 ### 1.4 Thumb ISA Coverage
 

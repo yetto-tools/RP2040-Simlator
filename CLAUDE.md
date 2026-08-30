@@ -236,7 +236,8 @@ When asked to implement something, I should confirm:
   MULS, ... (no IT block, so no non-S 16-bit forms except high-reg MOV/ADD, ADR, ADD/SUB SP)
 - NOT present: IT, CBZ/CBNZ, LDRD/STRD, LDM.W/STM.W, UMULL/SMULL, SDIV/UDIV,
   MOVW/MOVT, the Q and GE flags, 32-bit data processing
-- 3-stage pipeline: Fetch  Decode  Execute; PC reads as (instr addr + 4)
+- 2-stage pipeline (Fetch, Decode+Execute) - Cortex-M0+, not the M0's 3;
+  PC still reads architecturally as (instr addr + 4)
 - 16 registers (R0-R15; R13=SP banked MSP/PSP, R14=LR, R15=PC)
 - APSR: N, Z, C, V only. CONTROL (nPRIV, SPSEL), PRIMASK. VTOR present on M0+.
 - Exception handling with vector table (NVIC); 26 external IRQ on RP2040, 2 priority bits

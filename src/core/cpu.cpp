@@ -1,6 +1,7 @@
 #include "core/cpu.h"
 
 #include "core/alu.h"
+#include "core/timing.h"
 
 namespace rp2040 {
 
@@ -55,8 +56,22 @@ ExecStatus Cpu::step() {
         d = decode_thumb16(hw1.value);
     }
 
-    regs_.set_pc(pc + d.length);  // sequential default; branches override
-    return execute(d, pc);
+    const std::uint32_t seq_pc = pc + d.length;
+    regs_.set_pc(seq_pc);  // sequential default; branches override
+    const ExecStatus status = execute(d, pc);
+
+    unsigned reg_count = 0;
+    switch (d.op) {
+        case Mnemonic::LDM: case Mnemonic::STM:
+        case Mnemonic::PUSH: case Mnemonic::POP:
+            reg_count = popcount16(d.register_list);
+            break;
+        default:
+            break;
+    }
+    const bool took_branch = regs_.pc() != seq_pc;
+    cycles_ += instruction_cycles(d, took_branch, reg_count);
+    return status;
 }
 
 ExecStatus Cpu::execute(const DecodedInstr& d, std::uint32_t instr_pc) {

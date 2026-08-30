@@ -16,7 +16,7 @@ This project implements a **100% fidelity cycle-accurate simulator** of the RP20
 
  **ARM Cortex-M0+ CPU**
 - Full ARMv6-M Thumb ISA (Cortex-M0+; MOVS/ADDS/... flag-setting forms, no IT/CBZ/LDRD)
-- 3-stage pipeline simulation
+- 2-stage pipeline (Cortex-M0+) with cycle-accurate M0+ instruction timings
 - Cycle-accurate execution timing
 - Exception handling & NVIC
 
@@ -150,7 +150,7 @@ pioasm blink.pio blink.pio.h
 │  │ ARM Cortex-M0+ CPU                     │   │
 │  │ ├─ Registers (R0-R15, xPSR)            │   │
 │  │ ├─ Thumb ISA Decoder (ARMv6-M)        │   │
-│  │ ├─ Pipeline (Fetch-Decode-Execute)    │   │
+│  │ ├─ Pipeline (2-stage, M0+ timings)    │   │
 │  │ └─ Flag Logic (N,Z,C,V)               │   │
 │  └────────────────────────────────────────┘   │
 │                                                 │

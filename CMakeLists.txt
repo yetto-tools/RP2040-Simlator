@@ -45,6 +45,7 @@ add_library(rp2040_core STATIC
     src/core/thumb_decode.cpp
     src/core/alu.cpp
     src/core/cpu.cpp
+    src/core/timing.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)
 target_link_libraries(rp2040_core PRIVATE rp2040_project_options)

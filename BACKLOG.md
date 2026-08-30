@@ -72,7 +72,8 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Register file (R0-R15, banked MSP/PSP, APSR/IPSR/EPSR, CONTROL, PRIMASK)
 - [x] Program counter management (raw PC store, bit-0 masking, advance)
 - [x] Condition code logic (N, Z, C, V) + full ARMv6-M ConditionPassed()
-- [ ] Pipeline simulation (3 stages) - needs the decoder (P1.2)
+- [x] Execution model: `Cpu::step()` is atomic fetch/decode/execute (the M0+
+      2-stage pipeline is not micro-modelled; its cycle costs are - see P1.5)
 - [ ] Exception vector table - moved to P1.4 (NVIC / exceptions.h)
 - **Tests**: 20+ unit tests -> `tests/unit/test_registers.cpp` (17 cases)
 - **Effort**: 40 hours
@@ -133,14 +134,19 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3
 
-#### P1.5: Clock Management (Basic)
-- [ ] CPU clock source (125 MHz)
-- [ ] Cycle counter
-- [ ] Timing primitives
-- **Tests**: 5+ tests
+#### P1.5: Clock Management (Basic)  [IN PROGRESS]
+- [x] Per-instruction cycle counter on `Cpu::step()` (`cycle_count()`)
+- [x] Cortex-M0+ instruction timing table (`src/core/timing.{h,cpp}`):
+      1-cyc ALU, 2-cyc load/store, 1+N for LDM/STM/PUSH/POP, 4+N POP{PC},
+      3-cyc taken branch / BX, 4-cyc BL, single-cycle MUL, 4-cyc MRS/MSR
+- [ ] CPU clock source config (125 MHz default) + wall-clock conversion
+- [ ] Bus wait states (flash XIP latency, SRAM bank contention)
+- **Tests**: `tests/unit/test_timing.cpp` (8 cases)
 - **Effort**: 10 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1
+- **Design**: Cortex-M0+ TRM (DDI 0484) Table 3-1; RP2040 datasheet 2.4
+- **Files**: `src/core/timing.{h,cpp}`, `Cpu::cycle_count()`
 
 ---
 

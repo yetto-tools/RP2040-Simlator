@@ -42,6 +42,11 @@ public:
     std::uint32_t last_svc_imm() const { return svc_imm_; }
     std::uint32_t last_bkpt_imm() const { return bkpt_imm_; }
 
+    // Core execution cycles retired so far (Cortex-M0+ timings, zero wait
+    // states). Only step() accumulates; a bare execute() does not.
+    std::uint64_t cycle_count() const { return cycles_; }
+    void reset_cycle_count() { cycles_ = 0; }
+
 private:
     // R15 reads yield instr_pc + 4 (ARMv6-M); callers needing Align(PC,4)
     // mask the low two bits themselves.
@@ -54,6 +59,7 @@ private:
 
     RegisterFile& regs_;
     Memory& mem_;
+    std::uint64_t cycles_ = 0;
     std::uint32_t svc_imm_ = 0;
     std::uint32_t bkpt_imm_ = 0;
 };
