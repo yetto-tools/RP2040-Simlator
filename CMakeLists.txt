@@ -35,6 +35,36 @@ else()
 endif()
 
 # ----------------------------------------------------------------------------
+# MinGW runtime DLLs: copy alongside every executable's output so it runs
+# standalone. Without this, the .exe depends on whichever MinGW installation's
+# libstdc++-6.dll / libgcc_s_seh-1.dll / libwinpthread-1.dll happens to be
+# first on PATH at runtime - multiple MinGW installs (e.g. Git for Windows'
+# bundled one) commonly shadow each other there and produce
+# STATUS_ENTRY_POINT_NOT_FOUND crashes. Windows' DLL search checks the exe's
+# own directory before PATH, so a local copy always wins.
+# ----------------------------------------------------------------------------
+if(MINGW)
+    get_filename_component(RP2040_MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(RP2040_MINGW_RUNTIME_DLLS "")
+    foreach(_dll libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libwinpthread-1.dll)
+        if(EXISTS "${RP2040_MINGW_BIN_DIR}/${_dll}")
+            list(APPEND RP2040_MINGW_RUNTIME_DLLS "${RP2040_MINGW_BIN_DIR}/${_dll}")
+        endif()
+    endforeach()
+endif()
+
+# Copy the MinGW runtime DLLs (if any) next to a target's output binary.
+function(rp2040_copy_runtime_dlls target)
+    if(MINGW AND RP2040_MINGW_RUNTIME_DLLS)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${RP2040_MINGW_RUNTIME_DLLS} "$<TARGET_FILE_DIR:${target}>"
+            COMMENT "Copying MinGW runtime DLLs next to ${target}"
+            VERBATIM)
+    endif()
+endfunction()
+
+# ----------------------------------------------------------------------------
 # Core simulator library (self-contained, no external dependencies)
 # ----------------------------------------------------------------------------
 add_library(rp2040_core STATIC
@@ -88,6 +118,7 @@ endif()
 # ----------------------------------------------------------------------------
 add_executable(rp2040-sim src/main.cpp)
 target_link_libraries(rp2040-sim PRIVATE rp2040_core rp2040_project_options)
+rp2040_copy_runtime_dlls(rp2040-sim)
 
 # ----------------------------------------------------------------------------
 # Tests

@@ -13,6 +13,7 @@ target_link_libraries(doctest_main PUBLIC doctest)
 function(rp2040_add_test name)
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE rp2040_core doctest doctest_main rp2040_project_options)
+    rp2040_copy_runtime_dlls(${name})
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
