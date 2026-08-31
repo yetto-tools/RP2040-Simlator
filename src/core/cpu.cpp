@@ -219,6 +219,10 @@ ExecStatus Cpu::take_exception(unsigned exc, std::uint32_t return_address) {
     if (!vec.ok()) return ExecStatus::Lockup;
     regs_.set_thumb((vec.value & 1u) != 0);
     regs_.set_pc(vec.value & ~std::uint32_t{1});
+
+    cycles_ += kExceptionEntryCycles;
+    if (scs_ != nullptr) scs_->on_cycles(kExceptionEntryCycles);
+
     return ExecStatus::ExceptionTaken;
 }
 

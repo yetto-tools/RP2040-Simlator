@@ -949,10 +949,22 @@ timer/GPIO IRQ can still wake the core.
 | Event | Cycles |
 |-------|--------|
 | Interrupt asserted -> checked (between instructions) | 0-1 instr |
-| Exception entry (stacking + vector fetch) | modelled as a single step |
+| Exception entry (stacking + vector fetch) | 15, charged in full by `take_exception()` |
 
-The functional model takes the exception at the next `step()` boundary; the
-profiler's per-vector "handler cycles" measure covers entry-to-return.
+The 15-cycle figure is DDI 0484C section 3.6.1's documented worst-case
+interrupt latency for the Cortex-M0+ ("the worst case interrupt latency, for
+the highest priority active interrupt in a zero wait-state system not using
+jitter suppression, is 15 cycles") - verified against the real TRM, not
+estimated. The functional model takes the exception at the next `step()`
+boundary; the profiler's per-vector "handler cycles" measure covers
+entry-to-return.
+
+Not costed: exception *return* and the cycle *savings* of tail-chaining
+(back-to-back handler entry skipping the unstack/restack) - this TRM edition
+documents no separate figure for either, only the combined entry-latency
+number above. Both are functionally correct today (a pending exception is
+always taken at the next `step()` boundary, tail-chained or not), just not
+cycle-optimized. See BACKLOG.md P5.2.
 
 ---
 

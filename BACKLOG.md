@@ -561,14 +561,40 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: MEDIUM
 - **Design**: RP2040 datasheet 4.9
 
-#### P5.2: Advanced Interrupt Handling
-- [ ] Interrupt priority (0-3)
-- [ ] Preemption (higher priority interrupts higher-priority)
-- [ ] Pending flag management
-- [ ] Active flag management
-- [ ] Tail-chaining optimization
-- [ ] Interrupt stacking (8-word frame)
-- **Tests**: 20+ interrupt scenarios
+#### P5.2: Advanced Interrupt Handling  [DONE - entry timing sourced from the real TRM]
+- [x] Interrupt priority (0-3): `Cpu::priority_[]` + IPR registers
+      (`Scs::read_ipr`/`write_ipr`), `effective_priority()`
+- [x] Preemption: `Cpu::highest_pending_exception()` compares every pending
+      exception's priority against `current_execution_priority()` (derived
+      from the currently-running `regs_.exception_number()`) every
+      instruction boundary; a strictly-higher-priority pending exception
+      nests correctly (`take_exception()` re-enters while already in
+      Handler mode, pushing a second frame on top)
+- [x] Pending flag management: `pend_exception`/`clear_pending`/`is_pending`
+      (`pending_` bitfield), `Scs` NVIC ISPR/ICPR
+- [x] Active flag: `regs_.exception_number()` (== `ICSR.VECTACTIVE`, already
+      modeled in `Scs`) is the only NVIC-visible "active" state ARMv6-M
+      exposes - there is no IABR in this architecture (that's an
+      ARMv7-M/Cortex-M3+ NVIC feature), so there is nothing further to add
+- [x] Interrupt stacking (8-word frame): `Cpu::take_exception()`/
+      `exception_return()` (see P1.4)
+- [x] Exception entry latency: DDI 0484C section 3.6.1 - "the worst case
+      interrupt latency ... in a zero wait-state system not using jitter
+      suppression, is 15 cycles" - charged in full by `take_exception()` as
+      `kExceptionEntryCycles` (`src/core/timing.h`). Verified against the
+      real Cortex-M0+ r0p1 TRM, not from memory.
+- [x] Late-arriving: satisfied by construction, not a separate feature -
+      exception entry is atomic within one `Cpu::step()` call and always
+      picks the highest-priority *pending* exception before starting entry,
+      so there is no mid-stacking window for a late arrival to interject
+- [ ] Tail-chaining's cycle *savings* (skipping the unstack/restack when a
+      pending exception is ready right as the current handler returns):
+      functionally already happens (the next `step()` naturally takes the
+      next highest-priority pending exception), but this TRM edition
+      documents no separate cycle figure for it or for exception *return*,
+      so neither is cost-optimized - see `timing.h` and ARCHITECTURE.md 5.5
+- **Tests**: `tests/unit/test_exceptions.cpp` (10 cases, incl. two exercising
+      the 15-cycle entry charge directly)
 - **Effort**: 20 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.4

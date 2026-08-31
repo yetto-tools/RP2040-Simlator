@@ -95,6 +95,25 @@ TEST_CASE_FIXTURE(ExcFix, "exception entry stacks the 8-word frame and vectors")
     CHECK(regs.mode() == CpuMode::Handler);
     CHECK(regs.lr() == kExcReturnThreadMSP);
     CHECK(regs.pc() == 0x20000400u);
+
+    // DDI 0484C 3.6.1: 15-cycle worst-case interrupt latency, charged in
+    // full as the cost of entry (no separate return/tail-chain figure is
+    // documented there - see timing.h).
+    CHECK(cpu.cycle_count() == 15u);
+}
+
+TEST_CASE_FIXTURE(ExcFix, "a pended async exception charges the 15-cycle entry latency") {
+    cpu.reset();
+    code(kCode, {0xE7FE});               // thread: b . (never reached)
+    code(0x20000400u, {0x4770});         // handler: bx lr
+    write_vector(kExcSysTick, 0x20000401u);
+    cpu.set_exception_priority(kExcSysTick, 0);
+    cpu.pend_exception(kExcSysTick);
+
+    REQUIRE(cpu.cycle_count() == 0u);
+    CHECK(cpu.step() == ExecStatus::ExceptionTaken);
+    CHECK(cpu.cycle_count() == 15u);
+    CHECK(regs.pc() == 0x20000400u);
 }
 
 TEST_CASE_FIXTURE(ExcFix, "misaligned SP on entry is realigned and flagged") {

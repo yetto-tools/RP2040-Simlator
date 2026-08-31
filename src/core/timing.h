@@ -19,6 +19,16 @@ namespace rp2040 {
 //   reg_count   : number of registers transferred (LDM/STM/PUSH/POP), else 0.
 unsigned instruction_cycles(const DecodedInstr& d, bool took_branch, unsigned reg_count);
 
+// DDI 0484C section 3.6.1 ("Exception handling"): "The worst case interrupt
+// latency, for the highest priority active interrupt in a zero wait-state
+// system not using jitter suppression, is 15 cycles." That figure covers
+// the whole entry sequence (recognise, prioritise, stack, vector fetch,
+// pipeline refill), so it is charged in full by Cpu::take_exception().
+// This TRM edition documents no separate figure for exception *return* or
+// for a tail-chained (back-to-back) entry, so neither is costed here - see
+// ARCHITECTURE.md 5.5 and BACKLOG.md P5.2 for the open item.
+inline constexpr unsigned kExceptionEntryCycles = 15;
+
 }  // namespace rp2040
 
 #endif  // RP2040_CORE_TIMING_H
