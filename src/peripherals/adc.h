@@ -1,9 +1,13 @@
 // adc.h - RP2040 ADC (datasheet 4.9): a 12-bit SAR ADC with 5 inputs
 // (GPIO26-29 + the on-die temperature sensor) and a 4-entry sample FIFO.
 //
-// Functional model: input voltages are set by the test bench as raw 12-bit
-// codes. START_ONCE converts immediately; START_MANY free-runs, paced by the
-// 48 MHz ADC clock derived from on_cycles() (96 + DIV_INT clocks per sample).
+// Bit-accurate SAR timing: both START_ONCE and START_MANY take the real
+// 96 + DIV_INT ADC clocks per sample (paced by on_cycles() against the
+// 48 MHz ADC clock) - CS.READY stays clear for the whole conversion, not
+// just an instant. Input "voltages" are set by the test bench as raw 12-bit
+// codes (set_input()); there is no analog voltage model behind the GPIO
+// pins to sample instead, and no DMA DREQ line (see the DMA controller's
+// own DREQ approximation) - both are permanent scope limits, not TODOs.
 #ifndef RP2040_PERIPHERALS_ADC_H
 #define RP2040_PERIPHERALS_ADC_H
 

@@ -14,13 +14,17 @@ constexpr std::uint32_t kCTRL_TIME_MASK = 0x00FFFFFFu;
 
 constexpr std::uint32_t kREASON_TIMER = 1u << 0;
 constexpr std::uint32_t kREASON_FORCE = 1u << 1;
+
+// PSM_WDSEL.PROC1 (datasheet 2.13): bit 16 of the PSM register block.
+constexpr std::uint32_t kPsmWdselProc1 = 1u << 16;
 }  // namespace
 
 void Watchdog::fire_reset(std::uint32_t reason_bit) {
     reason_ = reason_bit;   // SCRATCH is preserved across the reset
     counter_ = 0;
     enabled_ = false;
-    if (reset_cb_) reset_cb_();
+    const std::uint32_t wdsel = wdsel_provider_ ? wdsel_provider_() : 0u;
+    if (reset_cb_) reset_cb_((wdsel & kPsmWdselProc1) != 0);
 }
 
 void Watchdog::on_cycles(std::uint64_t sys_cycles) {

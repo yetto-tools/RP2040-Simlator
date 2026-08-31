@@ -547,13 +547,17 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] `Adc` BusPeripheral (`src/peripherals/adc.{h,cpp}`) @ 0x4004C000
 - [x] 5 inputs (GPIO26-29 + temp sensor, gated by TS_EN); 12-bit RESULT;
       test bench sets raw codes via `set_input()`
-- [x] START_ONCE (immediate), START_MANY free-running paced by the 48 MHz
-      ADC clock from `on_cycles()` (96 + DIV_INT clocks/sample), RROBIN
+- [x] START_ONCE and START_MANY both take the real 96 + DIV_INT ADC clocks
+      per sample, paced by the 48 MHz ADC clock from `on_cycles()`
+      (CS.READY stays clear for the whole conversion, not just an instant -
+      START_ONCE previously completed synchronously, bypassing SAR timing
+      entirely); RROBIN
 - [x] 4-entry sample FIFO: FCS.EN/SHIFT, LEVEL, EMPTY/FULL, OVER/UNDER (w1c)
 - [x] INTR / INTE / INTF / INTS with THRESH -> ADC_IRQ_FIFO (IRQ22)
-- [ ] Bit-accurate SAR timing detail; DMA DREQ line; input from real GPIO
-      pad voltage
-- **Tests**: `tests/unit/test_adc.cpp` (8 cases)
+- [ ] DMA DREQ line (no peripheral-level DREQ handshake modelled, same as
+      UART/SPI/I2C); input from real GPIO pad voltage (permanent limit - no
+      analog voltage model behind the GPIO pins, not a TODO)
+- **Tests**: `tests/unit/test_adc.cpp` (11 cases)
 - **Priority**: MEDIUM
 - **Design**: RP2040 datasheet 4.9
 
@@ -574,12 +578,25 @@ Week 12:    PHASE 9 - Documentation & Release
       LOAD/CTRL down-counter (decrements by 2 per us per the HW quirk),
       feed via LOAD, ENABLE, CTRL.TRIGGER force-reset, REASON (TIMER/FORCE),
       SCRATCH0-7 (survive reset), TICK. Timeout -> Simulator resets the CPU.
-- [x] `Resets` (`src/peripherals/resets.{h,cpp}`) @ 0x4000C000: RESET / WDSEL
-      / RESET_DONE (= ~RESET, so pico-sdk unreset_block_wait returns) with the
-      +0x1000/2000/3000 XOR/SET/CLR atomic aliases
-- [ ] Pause-on-debug; watchdog-scoped resets via WDSEL
-- **Tests**: `tests/unit/test_watchdog.cpp` (5 cases)
-- **Design**: RP2040 datasheet 4.7, 2.14
+- [x] `Resets` (`src/peripherals/resets.{h,cpp}`) @ 0x4000C000: RESET /
+      RESETS_WDSEL (a real, separate register from PSM_WDSEL below - scopes
+      ~25 individual peripherals, e.g. UART0/1) / RESET_DONE (= ~RESET, so
+      pico-sdk unreset_block_wait returns) with the +0x1000/2000/3000
+      XOR/SET/CLR atomic aliases
+- [x] Watchdog-scoped reset via PSM_WDSEL.PROC1 (datasheet 2.13): core 0 is
+      always reset; core 1 is additionally reset only if PSM.WDSEL (read via
+      the existing `StubPeripheral psm_` @ 0x40010000, offset 0x08) has
+      PROC1 (bit 16) set - `Watchdog::set_wdsel_provider()`. This is the one
+      PSM.WDSEL bit with meaningful behaviour here; the other 16 (SRAM
+      banks, ROM, XIP, clocks, ...) have no "held in reset" concept to model
+- [ ] Pause-on-debug (PAUSE_DBG0/1/JTAG): needs a "core halted for debug"
+      state on Cpu/GdbStub that does not exist yet - real debugger-halt
+      infrastructure, not just a Watchdog change
+- [ ] RESETS_WDSEL itself is stored but not connected to anything: doing so
+      for real needs a reset() method on every one of the ~25 affected
+      peripheral classes
+- **Tests**: `tests/unit/test_watchdog.cpp` (6 cases)
+- **Design**: RP2040 datasheet 4.7, 2.13, 2.14
 
 > **Cross-cutting:** `src/core/atomic_peripheral.h` provides the shared
 > `AtomicPeripheral` base (span 0x4000; XOR/SET/CLR at +0x1000/2000/3000 as a

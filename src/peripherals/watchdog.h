@@ -4,6 +4,16 @@
 // hardware behaviour the counter decrements by 2 per microsecond tick.
 // SCRATCH0-7 survive the reset. on_cycles() paces the tick from the system
 // clock; a timeout invokes the reset callback.
+//
+// Watchdog-scoped reset (PSM.WDSEL, datasheet 2.13): core 0 is always reset.
+// Core 1 is additionally reset only if the wdsel provider (see
+// set_wdsel_provider()) reports PSM_WDSEL.PROC1 set - this is the one
+// PSM.WDSEL bit with a meaningful effect in this simulator (the other 16
+// select subsystems - SRAM banks, ROM, XIP, clocks, ... - with no "held in
+// reset" concept here). The separate RESETS.WDSEL register (a different,
+// real register - datasheet 2.14 - scoping ~25 individual peripherals) is
+// stored but not connected to anything: doing so for real would need a
+// reset() method on every affected peripheral class.
 #ifndef RP2040_PERIPHERALS_WATCHDOG_H
 #define RP2040_PERIPHERALS_WATCHDOG_H
 
@@ -24,7 +34,11 @@ public:
     explicit Watchdog(std::uint32_t cycles_per_us = 125) : cycles_per_us_(cycles_per_us) {}
 
     bool attach(Memory& mem) { return mem.attach_peripheral(kBase, kSize, this); }
-    void on_reset(std::function<void()> cb) { reset_cb_ = std::move(cb); }
+    // `reset_core1` reflects PSM_WDSEL.PROC1 at the moment of the reset.
+    void on_reset(std::function<void(bool reset_core1)> cb) { reset_cb_ = std::move(cb); }
+    // Queried on every reset to read the live PSM.WDSEL value (the clock
+    // tree/Simulator wires this to the PSM register block).
+    void set_wdsel_provider(std::function<std::uint32_t()> fn) { wdsel_provider_ = std::move(fn); }
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
@@ -53,7 +67,8 @@ private:
     std::uint32_t reason_ = 0;
     std::uint32_t tick_ = 0;
     std::array<std::uint32_t, 8> scratch_{};
-    std::function<void()> reset_cb_;
+    std::function<void(bool reset_core1)> reset_cb_;
+    std::function<std::uint32_t()> wdsel_provider_;
 };
 
 }  // namespace rp2040

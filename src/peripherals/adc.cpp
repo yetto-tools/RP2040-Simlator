@@ -139,9 +139,10 @@ BusStatus Adc::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         case kCS: {
             // READY is read-only; START_ONCE / START_MANY self-clear here.
             cs_ = (value & ~kCS_READY) & ~kCS_START_ONCE;
-            if ((value & kCS_START_ONCE) != 0 && (cs_ & kCS_EN) != 0) {
+            if ((value & kCS_START_ONCE) != 0 && (cs_ & kCS_EN) != 0 && !converting_) {
                 cs_ &= ~kCS_READY;
-                convert();
+                converting_ = true;
+                conv_countdown_ = 96u + ((div_ >> 8) & 0xFFFFu);  // same fixed SAR time as free-running
             }
             refresh_irq();
             break;

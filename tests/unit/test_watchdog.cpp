@@ -15,10 +15,16 @@ struct WdFix {
     Memory mem;
     Watchdog wd{/*cycles_per_us=*/10};
     int resets = 0;
+    int core1_resets = 0;
+    std::uint32_t wdsel = 0;   // simulated PSM.WDSEL, queried by the watchdog
 
     WdFix() {
         REQUIRE(wd.attach(mem));
-        wd.on_reset([&] { ++resets; });
+        wd.on_reset([&](bool reset_core1) {
+            ++resets;
+            if (reset_core1) ++core1_resets;
+        });
+        wd.set_wdsel_provider([&] { return wdsel; });
     }
     std::uint32_t rd(std::uint32_t off) { return mem.read_word(Watchdog::kBase + off).value; }
     void wr(std::uint32_t off, std::uint32_t v) {
@@ -55,6 +61,17 @@ TEST_CASE_FIXTURE(WdFix, "CTRL.TRIGGER forces an immediate reset") {
     wr(0x00, 1u << 31);
     CHECK(resets == 1);
     CHECK((rd(0x08) & (1u << 1)) != 0);   // REASON.FORCE
+}
+
+TEST_CASE_FIXTURE(WdFix, "core 1 is only reset when PSM_WDSEL.PROC1 is set") {
+    wr(0x00, 1u << 31);             // trigger reset, PROC1 not selected
+    CHECK(resets == 1);
+    CHECK(core1_resets == 0);
+
+    wdsel = 1u << 16;                // PSM_WDSEL.PROC1
+    wr(0x00, 1u << 31);
+    CHECK(resets == 2);
+    CHECK(core1_resets == 1);
 }
 
 TEST_CASE_FIXTURE(WdFix, "SCRATCH registers persist across a reset") {

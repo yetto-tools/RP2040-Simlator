@@ -45,7 +45,14 @@ Simulator::Simulator() {
     pll_sys_.attach(mem_);
     pll_usb_.attach(mem_);
     clocks_.attach(mem_);
-    watchdog_.on_reset([this] { cpu_.reset(); });
+    watchdog_.on_reset([this](bool reset_core1) {
+        cpu_.reset();
+        if (reset_core1) {
+            cpu1_.reset();
+            core1_running_ = false;
+        }
+    });
+    watchdog_.set_wdsel_provider([this] { return psm_.reg_read(0x08u, BusWidth::Word).value; });
     scs_.on_system_reset([this] {
         cpu_.reset();
         cpu1_.reset();
