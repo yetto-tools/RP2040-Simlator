@@ -126,6 +126,13 @@ std::uint32_t Uart::read_fr() const {
     return fr;
 }
 
+bool Uart::tx_dreq_ready() const {
+    return (dmacr_ & (1u << 1)) != 0 && tx_fifo_.size() < kFifoDepth;
+}
+bool Uart::rx_dreq_ready() const {
+    return (dmacr_ & 1u) != 0 && !rx_.empty();
+}
+
 std::uint32_t Uart::read_ris() const {
     std::uint32_t ris = ris_ & kINT_STICKY;
     if ((cr_ & kCR_UARTEN) != 0) {
@@ -161,6 +168,7 @@ BusResult<std::uint32_t> Uart::bus_read(std::uint32_t offset, BusWidth) {
         case kUARTFBRD: return {fbrd_, BusStatus::Ok};
         case kUARTCR:   return {cr_, BusStatus::Ok};
         case kUARTIMSC: return {imsc_, BusStatus::Ok};
+        case kUARTDMACR: return {dmacr_, BusStatus::Ok};
         case kUARTRIS:  return {read_ris(), BusStatus::Ok};
         case kUARTMIS:  return {read_ris() & imsc_, BusStatus::Ok};
         default:        return {0u, BusStatus::Ok};
@@ -188,8 +196,9 @@ BusStatus Uart::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
             ris_ &= ~(value & kINT_STICKY);  // write-1-clear
             refresh_irq();
             break;
-        case kUARTIFLS: case kUARTDMACR: case kUARTILPR:
-            break;  // stored/ignored (IFLS watermark and DMA request lines not modelled)
+        case kUARTDMACR: dmacr_ = value & 0x7u; break;
+        case kUARTIFLS: case kUARTILPR:
+            break;  // stored/ignored (IFLS watermark not modelled)
         default:
             break;
     }

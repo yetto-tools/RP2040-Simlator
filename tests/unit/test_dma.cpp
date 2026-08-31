@@ -190,6 +190,41 @@ TEST_CASE_FIXTURE(DmaFix, "a DMA pacing timer throttles the transfer rate") {
     CHECK_FALSE(dma.channel_busy(1));       // 3 more elements over 9 clocks
 }
 
+TEST_CASE_FIXTURE(DmaFix, "a registered DREQ source paces the channel, at most one/clock") {
+    for (unsigned i = 0; i < 3; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, 0x1000u + i) == BusStatus::Ok);
+
+    bool ready = false;
+    dma.set_dreq_source(20, [&] { return ready; });  // DREQ_UART0_TX == 20
+    program_no_pump(0, kSrc, kDst, 3, ctrl(2, true, true, 0, false, false, /*treq=*/20));
+
+    dma.on_cycles(5);
+    CHECK(dma.remaining(0) == 3u);   // source never reports ready: no progress
+
+    ready = true;
+    dma.on_cycles(1);
+    CHECK(dma.remaining(0) == 2u);   // exactly one element per clock while ready
+    dma.on_cycles(1);
+    CHECK(dma.remaining(0) == 1u);
+    dma.on_cycles(1);
+    CHECK_FALSE(dma.channel_busy(0));
+    CHECK(mem.read_word(kDst + 8).value == 0x1002u);
+}
+
+TEST_CASE_FIXTURE(DmaFix, "an unregistered DREQ number still falls back to dreq_divisor()") {
+    for (unsigned i = 0; i < 2; ++i)
+        REQUIRE(mem.write_word(kSrc + 4 * i, i) == BusStatus::Ok);
+
+    dma.set_dreq_divisor(3);
+    // DREQ 0 (DREQ_PIO0_TX0) has no registered source in this fixture.
+    program_no_pump(0, kSrc, kDst, 2, ctrl(2, true, true, 0, false, false, /*treq=*/0));
+
+    dma.on_cycles(2);
+    CHECK(dma.remaining(0) == 2u);   // < 3 clocks
+    dma.on_cycles(1);
+    CHECK(dma.remaining(0) == 1u);   // one element every 3 clocks
+}
+
 TEST_CASE_FIXTURE(DmaFix, "sniff: CRC-32 (reversed) of \"123456789\" == 0xCBF43926") {
     const char* msg = "123456789";
     for (unsigned i = 0; i < 9; ++i)

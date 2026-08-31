@@ -15,9 +15,10 @@ constexpr std::uint32_t kCS_READY      = 1u << 8;
 constexpr unsigned      kCS_AINSEL_LSB = 12;   // [14:12]
 constexpr unsigned      kCS_RROBIN_LSB = 16;   // [23:16]
 
-constexpr std::uint32_t kFCS_EN    = 1u << 0;
-constexpr std::uint32_t kFCS_SHIFT = 1u << 1;
-constexpr std::uint32_t kFCS_ERR   = 1u << 2;
+constexpr std::uint32_t kFCS_EN      = 1u << 0;
+constexpr std::uint32_t kFCS_SHIFT   = 1u << 1;
+constexpr std::uint32_t kFCS_ERR     = 1u << 2;
+constexpr std::uint32_t kFCS_DREQ_EN = 1u << 3;
 constexpr std::uint32_t kFCS_EMPTY = 1u << 8;
 constexpr std::uint32_t kFCS_FULL  = 1u << 9;
 constexpr std::uint32_t kFCS_OVER  = 1u << 10;
@@ -25,6 +26,10 @@ constexpr std::uint32_t kFCS_UNDER = 1u << 11;
 constexpr unsigned      kFCS_LEVEL_LSB  = 16;  // [19:16]
 constexpr unsigned      kFCS_THRESH_LSB = 24;  // [27:24]
 }  // namespace
+
+bool Adc::dreq_ready() const {
+    return (fcs_ & kFCS_DREQ_EN) != 0 && !fifo_.empty();
+}
 
 void Adc::set_input(unsigned channel, std::uint16_t raw12) {
     if (channel < kNumInputs) input_[channel] = raw12 & 0x0FFFu;

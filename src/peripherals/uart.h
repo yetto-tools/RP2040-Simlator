@@ -80,6 +80,11 @@ public:
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 
+    // DREQ readiness (datasheet 2.5.3.1: DREQ_UARTn_TX/RX), gated by
+    // UARTDMACR.TXDMAE/RXDMAE like real hardware.
+    bool tx_dreq_ready() const;
+    bool rx_dreq_ready() const;
+
 private:
     struct RxEntry { std::uint8_t data; std::uint8_t err; };
 
@@ -103,6 +108,7 @@ private:
     std::function<void(std::uint8_t)> tx_cb_;
 
     std::uint32_t lcr_h_ = 0;
+    std::uint32_t dmacr_ = 0;    // bit0 RXDMAE, bit1 TXDMAE
     std::uint32_t cr_ = 0x300;   // reset: TXE|RXE set, UARTEN clear
     std::uint32_t imsc_ = 0;
     std::uint32_t ris_ = 0;      // sticky bits: RT, FE, PE, BE, OE

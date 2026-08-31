@@ -85,6 +85,24 @@ Simulator::Simulator() {
     pio0_regs_.connect_core1(&cpu1_);
     pio1_regs_.connect_core1(&cpu1_);
 
+    // Real per-peripheral DREQ sources (datasheet 2.5.3.1 Table 119), so DMA
+    // pacing against these peripherals reflects their own real FIFO state
+    // (e.g. a UART TX DMA channel is only as fast as the UART's own
+    // baud-paced draining) instead of the generic dreq_divisor() fallback.
+    dma_.set_dreq_source(16, [this] { return spi0_.tx_dreq_ready(); });
+    dma_.set_dreq_source(17, [this] { return spi0_.rx_dreq_ready(); });
+    dma_.set_dreq_source(18, [this] { return spi1_.tx_dreq_ready(); });
+    dma_.set_dreq_source(19, [this] { return spi1_.rx_dreq_ready(); });
+    dma_.set_dreq_source(20, [this] { return uart0_.tx_dreq_ready(); });
+    dma_.set_dreq_source(21, [this] { return uart0_.rx_dreq_ready(); });
+    dma_.set_dreq_source(22, [this] { return uart1_.tx_dreq_ready(); });
+    dma_.set_dreq_source(23, [this] { return uart1_.rx_dreq_ready(); });
+    dma_.set_dreq_source(32, [this] { return i2c0_.tx_dreq_ready(); });
+    dma_.set_dreq_source(33, [this] { return i2c0_.rx_dreq_ready(); });
+    dma_.set_dreq_source(34, [this] { return i2c1_.tx_dreq_ready(); });
+    dma_.set_dreq_source(35, [this] { return i2c1_.rx_dreq_ready(); });
+    dma_.set_dreq_source(36, [this] { return adc_.dreq_ready(); });
+
     sio_.connect_cores(&cpu_, &cpu1_);
     sio_.on_core1_launch([this](std::uint32_t vtor, std::uint32_t sp, std::uint32_t entry) {
         regs1_.reset();

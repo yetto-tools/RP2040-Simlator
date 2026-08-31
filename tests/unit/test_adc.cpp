@@ -139,3 +139,17 @@ TEST_CASE_FIXTURE(AdcFix, "FIFO interrupt is gated by INTE and reaches the NVIC"
     CHECK(rd(0x0C) == 0x0A0);                    // drain
     CHECK_FALSE(cpu.is_pending(Adc::kIrq));
 }
+
+TEST_CASE_FIXTURE(AdcFix, "dreq_ready() is gated by FCS.DREQ_EN and FIFO content") {
+    adc.set_input(0, 0x111);
+    wr(0x08, 1u);                                // FCS.EN (no DREQ_EN yet)
+    wr(0x00, kEN | kSTART_ONCE);
+    advance();
+    CHECK_FALSE(adc.dreq_ready());               // FIFO has data, but DREQ_EN not set
+
+    wr(0x08, 1u | (1u << 3));                    // + FCS.DREQ_EN
+    CHECK(adc.dreq_ready());
+
+    rd(0x0C);                                    // drain the FIFO
+    CHECK_FALSE(adc.dreq_ready());               // DREQ_EN set, but FIFO now empty
+}

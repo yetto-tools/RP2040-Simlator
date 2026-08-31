@@ -133,3 +133,17 @@ TEST_CASE_FIXTURE(SpiFix, "with no bit-rate divisor configured (CPSDVSR=0), no d
     CHECK(spi.take_output().empty());
     CHECK((rd(0x0C) & (1u << 4)) != 0);    // BSY: still queued, never clocked out
 }
+
+TEST_CASE_FIXTURE(SpiFix, "tx/rx_dreq_ready() are gated by SSPDMACR and FIFO state") {
+    CHECK_FALSE(spi.tx_dreq_ready());      // TXDMAE not set yet
+    wr(0x24, 1u << 1);                     // SSPDMACR.TXDMAE
+    CHECK(spi.tx_dreq_ready());            // TXDMAE set, FIFO has room
+
+    CHECK_FALSE(spi.rx_dreq_ready());      // RXDMAE not set, and FIFO is empty
+    wr(0x24, (1u << 1) | 1u);              // + RXDMAE
+    CHECK_FALSE(spi.rx_dreq_ready());      // RXDMAE set, but FIFO still empty
+    spi.feed(0xAA);
+    wr(0x08, 0x00);
+    advance_frames(1);
+    CHECK(spi.rx_dreq_ready());            // now has data
+}

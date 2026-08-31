@@ -83,6 +83,13 @@ void Spi::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+bool Spi::tx_dreq_ready() const {
+    return (dmacr_ & (1u << 1)) != 0 && tx_fifo_.size() < kFifoDepth;
+}
+bool Spi::rx_dreq_ready() const {
+    return (dmacr_ & 1u) != 0 && !rx_.empty();
+}
+
 std::uint32_t Spi::read_sr() const {
     std::uint32_t sr = 0;
     if (tx_fifo_.empty()) sr |= kSR_TFE;
@@ -122,6 +129,7 @@ BusResult<std::uint32_t> Spi::bus_read(std::uint32_t offset, BusWidth) {
         case kSSPSR:  return {read_sr(), BusStatus::Ok};
         case kSSPCPSR: return {cpsdvsr_, BusStatus::Ok};
         case kSSPIMSC: return {imsc_, BusStatus::Ok};
+        case kSSPDMACR: return {dmacr_, BusStatus::Ok};
         case kSSPRIS: return {live_ris(), BusStatus::Ok};
         case kSSPMIS: return {live_ris() & imsc_, BusStatus::Ok};
         default: return {0u, BusStatus::Ok};
@@ -141,7 +149,7 @@ BusStatus Spi::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         case kSSPCPSR: cpsdvsr_ = value & 0xFFu; break;
         case kSSPIMSC: imsc_ = value & 0xFu; refresh_irq(); break;
         case kSSPICR:  break;  // RORIC/RTIC: no sticky bits modelled
-        case kSSPDMACR: break;  // DMA request lines not modelled
+        case kSSPDMACR: dmacr_ = value & 0x3u; break;
         default: break;
     }
     return BusStatus::Ok;

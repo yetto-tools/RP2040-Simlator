@@ -11,7 +11,7 @@ enum : std::uint32_t {
     kIC_CLR_INTR = 0x40, kIC_CLR_RX_UNDER = 0x44, kIC_CLR_RX_OVER = 0x48,
     kIC_CLR_TX_ABRT = 0x54, kIC_CLR_STOP_DET = 0x60,
     kIC_ENABLE = 0x6C, kIC_STATUS = 0x70, kIC_TXFLR = 0x74, kIC_RXFLR = 0x78,
-    kIC_TX_ABRT_SOURCE = 0x80,
+    kIC_TX_ABRT_SOURCE = 0x80, kIC_DMA_CR = 0x88,
 };
 constexpr std::uint32_t kINTR_RX_FULL  = 1u << 2;
 constexpr std::uint32_t kINTR_TX_EMPTY = 1u << 4;
@@ -78,6 +78,13 @@ void I2c::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+bool I2c::tx_dreq_ready() const {
+    return (dma_cr_ & (1u << 1)) != 0 && tx_cmds_.size() < kFifoDepth;
+}
+bool I2c::rx_dreq_ready() const {
+    return (dma_cr_ & 1u) != 0 && !rx_.empty();
+}
+
 void I2c::refresh_irq() {
     if ((raw_intr_ & intr_mask_) != 0) nvic_.pend_exception(irq_);
     else                               nvic_.clear_pending(irq_);
@@ -116,6 +123,7 @@ BusResult<std::uint32_t> I2c::bus_read(std::uint32_t offset, BusWidth) {
         case kIC_INTR_STAT: return {raw_intr_ & intr_mask_, BusStatus::Ok};
         case kIC_INTR_MASK: return {intr_mask_, BusStatus::Ok};
         case kIC_TX_ABRT_SOURCE: return {tx_abrt_source_, BusStatus::Ok};
+        case kIC_DMA_CR: return {dma_cr_, BusStatus::Ok};
         case kIC_CLR_TX_ABRT:
             raw_intr_ &= ~kINTR_TX_ABRT;
             tx_abrt_source_ = 0;
@@ -146,6 +154,7 @@ BusStatus I2c::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         case kIC_FS_SCL_HCNT: fs_hcnt_ = value & 0xFFFFu; break;
         case kIC_FS_SCL_LCNT: fs_lcnt_ = value & 0xFFFFu; break;
         case kIC_ENABLE: enabled_ = (value & 1u) != 0; break;
+        case kIC_DMA_CR: dma_cr_ = value & 0x3u; break;
         case kIC_INTR_MASK: intr_mask_ = value & 0x3FFFu; refresh_irq(); break;
         case kIC_DATA_CMD: {
             if (!enabled_ || tx_cmds_.size() >= kFifoDepth) break;

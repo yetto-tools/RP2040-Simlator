@@ -66,6 +66,11 @@ public:
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 
+    // DREQ readiness (datasheet 2.5.3.1: DREQ_SPIn_TX/RX), gated by
+    // SSPDMACR.TXDMAE/RXDMAE like real hardware.
+    bool tx_dreq_ready() const;
+    bool rx_dreq_ready() const;
+
 private:
     void refresh_irq();
     std::uint32_t read_sr() const;
@@ -88,6 +93,7 @@ private:
     std::uint32_t cr1_ = 0;   // bit1 SSE enable, bit0 LBM loopback
     std::uint32_t cpsdvsr_ = 0;
     std::uint32_t imsc_ = 0;
+    std::uint32_t dmacr_ = 0;   // bit0 RXDMAE, bit1 TXDMAE
 
     std::uint32_t spi_hz_;
     std::uint32_t sys_hz_;

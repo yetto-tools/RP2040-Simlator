@@ -140,3 +140,19 @@ TEST_CASE_FIXTURE(I2cFix, "with no bit-rate configured (HCNT=LCNT=0), no transac
     CHECK_FALSE(touched);
     CHECK(rd(0x74) == 1u);         // IC_TXFLR: the command is still queued
 }
+
+TEST_CASE_FIXTURE(I2cFix, "tx/rx_dreq_ready() are gated by IC_DMA_CR and FIFO state") {
+    CHECK_FALSE(i2c.tx_dreq_ready());      // TDMAE not set yet
+    wr(0x88, 1u << 1);                     // IC_DMA_CR.TDMAE
+    CHECK(i2c.tx_dreq_ready());            // TDMAE set, TX command FIFO has room
+
+    CHECK_FALSE(i2c.rx_dreq_ready());      // RDMAE not set, and RX FIFO is empty
+    wr(0x88, (1u << 1) | 1u);              // + RDMAE
+    CHECK_FALSE(i2c.rx_dreq_ready());      // RDMAE set, but FIFO still empty
+
+    i2c.set_slave(0x40, [](bool is_read, std::uint8_t& b) { if (is_read) b = 0x7; return true; });
+    wr(0x04, 0x40);
+    wr(0x10, 1u << 8);                     // read command
+    advance_cmds(1);
+    CHECK(i2c.rx_dreq_ready());            // now has data
+}

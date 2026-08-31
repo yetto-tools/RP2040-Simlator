@@ -58,6 +58,10 @@ public:
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 
+    // DREQ readiness (datasheet 2.5.3.1: DREQ_ADC), gated by FCS.DREQ_EN
+    // ("assert DMA requests when FIFO contains data") like real hardware.
+    bool dreq_ready() const;
+
 private:
     void convert();          // one conversion of the selected channel
     void refresh_irq();

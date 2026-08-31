@@ -241,6 +241,16 @@ void Dma::on_cycles(std::uint64_t sys_cycles) {
             Channel& c = chan_[ch];
             if ((c.ctrl & kCTRL_BUSY) == 0 || c.remaining == 0) continue;
 
+            const std::uint32_t sel = (c.ctrl >> kCTRL_TREQ_SEL_LSB) & 0x3Fu;
+            if (sel < kNumDreqs && dreq_ready_[sel]) {
+                // A real, registered DREQ source (datasheet 2.5.3.2): up to
+                // one transfer per clock while the peripheral reports ready.
+                if (!dreq_ready_[sel]()) continue;
+                if (!transfer_one(ch)) { complete(ch, /*error=*/true); continue; }
+                if (--c.remaining == 0) complete(ch, /*error=*/false);
+                continue;
+            }
+
             const Rate r = rate_for(c);
             if (r.num == 0) continue;                  // pacing source idle
             c.pace_accum += r.num;

@@ -6,9 +6,19 @@
 //   TREQ_SEL == 0x3f (PERMANENT)    -> one element per clock (unpaced)
 //   TREQ_SEL 0x3b..0x3e (TIMER0..3) -> rate = sys_clk * X / Y from the
 //                                     matching DMA pacing timer register
-//   TREQ_SEL 0x00..0x3a (a DREQ)    -> approximated as one element every
-//                                     dreq_divisor() clocks (a full FIFO-level
-//                                     handshake is not modelled)
+//   TREQ_SEL 0x00..0x27 (a DREQ)    -> if a ready-source is registered for
+//                                     that DREQ number (see
+//                                     set_dreq_source()), up to one transfer
+//                                     per clock while it reports ready -
+//                                     datasheet 2.5.3.2's "credit-based DREQ
+//                                     scheme" upper-bounds in-flight
+//                                     transfers by peripheral FIFO room/data,
+//                                     which in the steady state this
+//                                     level-check converges to; otherwise
+//                                     falls back to one element every
+//                                     dreq_divisor() clocks (unregistered
+//                                     DREQs - PIO, PWM, XIP - have no real
+//                                     FIFO-level handshake modelled)
 //
 // Byte/half/word size, address increment, ring wrap, byte-swap, CHAIN_TO,
 // MULTI_CHAN_TRIGGER, CHAN_ABORT and the INTR/INTE/INTF/INTS -> DMA_IRQ_0/1
@@ -18,6 +28,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 
 #include "core/atomic_peripheral.h"
 #include "core/bus.h"
@@ -45,8 +56,18 @@ public:
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
-    // Approximate pacing for a peripheral DREQ (clocks per element). Default 2.
+    // Approximate pacing for an *unregistered* peripheral DREQ (clocks per
+    // element). Default 2.
     void set_dreq_divisor(std::uint32_t clocks) { dreq_divisor_ = clocks == 0 ? 1u : clocks; }
+
+    // Register the real ready-check for DREQ number `n` (datasheet 2.5.3.1
+    // Table 119, e.g. DREQ_UART0_TX == 20): called at most once per clock
+    // while a channel selects it. Once registered, this DREQ number no
+    // longer uses dreq_divisor().
+    static constexpr unsigned kNumDreqs = 40;  // DREQ 0..39 (Table 119)
+    void set_dreq_source(unsigned dreq_num, std::function<bool()> ready) {
+        if (dreq_num < kNumDreqs) dreq_ready_[dreq_num] = std::move(ready);
+    }
 
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
@@ -89,6 +110,7 @@ private:
     std::uint32_t sniff_ctrl_ = 0;                 // EN|DMACH|CALC|BSWAP|OUT_REV|OUT_INV
     std::uint32_t sniff_data_ = 0;                 // running checksum accumulator
     std::uint32_t dreq_divisor_ = 2;
+    std::array<std::function<bool()>, kNumDreqs> dreq_ready_{};
     unsigned chain_depth_ = 0;                // guard against 0-length chain loops
 };
 

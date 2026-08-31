@@ -144,3 +144,16 @@ TEST_CASE_FIXTURE(UartFix, "with no baud rate configured (IBRD=0), no data moves
     CHECK(uart.take_output().empty());
     CHECK((rd(0x18) & (1u << 4)) != 0);    // RXFE still set - nothing arrived
 }
+
+TEST_CASE_FIXTURE(UartFix, "tx/rx_dreq_ready() are gated by DMACR and FIFO state") {
+    CHECK_FALSE(uart.tx_dreq_ready());     // TXDMAE not set yet
+    wr(0x48, 1u << 1);                     // UARTDMACR.TXDMAE
+    CHECK(uart.tx_dreq_ready());           // TXDMAE set, FIFO has room
+
+    CHECK_FALSE(uart.rx_dreq_ready());     // RXDMAE not set, and FIFO is empty
+    wr(0x48, (1u << 1) | 1u);              // + RXDMAE
+    CHECK_FALSE(uart.rx_dreq_ready());     // RXDMAE set, but FIFO still empty
+    uart.feed('x');
+    advance_bytes(1);
+    CHECK(uart.rx_dreq_ready());           // now has data
+}

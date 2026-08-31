@@ -405,7 +405,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 4: UART + SPI (Week 7)
 
-#### P4.1: UART0 / UART1 Controller (PL011)  [IN PROGRESS]
+#### P4.1: UART0 / UART1 Controller (PL011)  [DONE]
 - [x] `Uart` BusPeripheral (`src/peripherals/uart.{h,cpp}`) @ 0x40034000 /
       0x40038000; UART0_IRQ = IRQ20, UART1_IRQ = IRQ21
 - [x] UARTDR TX -> TX FIFO -> output log + on_transmit() callback (paced, see
@@ -430,9 +430,12 @@ Week 12:    PHASE 9 - Documentation & Release
       already full -> byte dropped, OE set (sticky, RSR/ECR + RIS.OERIS)
 - [x] Break detection (LCR_H.BRK): while set, TX holds off starting any new
       byte (line held low), matching the "continuous break" behaviour
-- [ ] DMA request lines (UARTDMACR stored/ignored - no peripheral-level DREQ
-      handshake modelled; see the DMA controller's own DREQ approximation)
-- **Tests**: `tests/unit/test_uart.cpp` (11 cases)
+- [x] DMA request lines: `tx_dreq_ready()`/`rx_dreq_ready()`, gated by
+      UARTDMACR.TXDMAE/RXDMAE and real TX/RX FIFO state, registered with
+      `Dma::set_dreq_source()` for DREQ_UART0/1_TX/RX (20-23) in
+      `Simulator` - a UART-fed DMA channel is now paced by the UART's own
+      real baud-rate-driven FIFO draining/filling, not a generic divisor
+- **Tests**: `tests/unit/test_uart.cpp` (12 cases)
 - **Effort**: 30 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3, P1.4
@@ -462,7 +465,10 @@ Week 12:    PHASE 9 - Documentation & Release
       spi.h)
 - [ ] Chip-select lines (software bit-bangs CS via GPIO; out of this
       peripheral's scope)
-- **Tests**: `tests/unit/test_spi.cpp` (11 cases)
+- [x] DMA request lines: `tx_dreq_ready()`/`rx_dreq_ready()`, gated by
+      SSPDMACR.TXDMAE/RXDMAE and real TX/RX FIFO state, registered for
+      DREQ_SPI0/1_TX/RX (16-19) in `Simulator`
+- **Tests**: `tests/unit/test_spi.cpp` (12 cases)
 - **Design**: RP2040 datasheet 4.4
 
 #### P4.4: SPI1 Controller  [DONE]
@@ -489,8 +495,11 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Clock stretching: `stretch_next(cycles)` lets the test bench (playing
       the slave) add extra ic_clk cycles to the next transaction only, since
       there's no real open-drain SCL line for a slave to hold low against
-- [ ] 10-bit addressing, slave mode, arbitration loss, DMA
-- **Tests**: `tests/unit/test_i2c.cpp` (8 cases)
+- [x] DMA request lines: `tx_dreq_ready()`/`rx_dreq_ready()`, gated by
+      IC_DMA_CR.TDMAE/RDMAE (offset 0x88) and real TX-command/RX FIFO state,
+      registered for DREQ_I2C0/1_TX/RX (32-35) in `Simulator`
+- [ ] 10-bit addressing, slave mode, arbitration loss
+- **Tests**: `tests/unit/test_i2c.cpp` (9 cases)
 - **Design**: RP2040 datasheet 4.3
 
 ---
@@ -510,9 +519,15 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] DREQ pacing: transfers are stepped by `Dma::on_cycles()` from
       `Simulator::step()`. PERMANENT (0x3F) = one element/clock; TIMER0..3
       (0x3B..0x3E) = `sys_clk * X/Y` from the DMA pacing-timer registers
-      (0x420..0x42C); a peripheral DREQ is approximated as one element every
-      `dreq_divisor()` clocks (no FIFO-level handshake). TRANS_COUNT reads the
-      live remaining count while BUSY.
+      (0x420..0x42C). Real DREQs (datasheet 2.5.3.1 Table 119) use
+      `Dma::set_dreq_source()`: for UART/SPI/I2C/ADC (13 of the 40 DREQ
+      numbers - see their own P4.1/P4.3/P4.5-6/P5.1 entries) this is a real
+      peripheral-FIFO-state check, up to one transfer/clock while ready - a
+      level-check approximation of datasheet 2.5.3.2's credit-based DREQ
+      scheme that converges to the same steady-state throughput without the
+      short-term burst/credit bookkeeping. Unregistered DREQs (PIO, PWM,
+      XIP) still fall back to one element every `dreq_divisor()` clocks.
+      TRANS_COUNT reads the live remaining count while BUSY.
 - [x] Sniff (SNIFF_CTRL @ 0x434 / SNIFF_DATA @ 0x438): folds every element of
       the selected channel (gated by CTRL.SNIFF_EN + SNIFF_CTRL.DMACH) into the
       accumulator. CALC 0x0/0x1 = CRC-32 / CRC-32R, 0x2/0x3 = CRC-16-CCITT /
@@ -543,7 +558,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `src/peripherals/usb.{h,cpp}`
 - **Design**: RP2040 datasheet 4.1
 
-#### P5.1: ADC Controller  [IN PROGRESS]
+#### P5.1: ADC Controller  [DONE - no analog voltage model, permanent limit]
 - [x] `Adc` BusPeripheral (`src/peripherals/adc.{h,cpp}`) @ 0x4004C000
 - [x] 5 inputs (GPIO26-29 + temp sensor, gated by TS_EN); 12-bit RESULT;
       test bench sets raw codes via `set_input()`
@@ -554,10 +569,12 @@ Week 12:    PHASE 9 - Documentation & Release
       entirely); RROBIN
 - [x] 4-entry sample FIFO: FCS.EN/SHIFT, LEVEL, EMPTY/FULL, OVER/UNDER (w1c)
 - [x] INTR / INTE / INTF / INTS with THRESH -> ADC_IRQ_FIFO (IRQ22)
-- [ ] DMA DREQ line (no peripheral-level DREQ handshake modelled, same as
-      UART/SPI/I2C); input from real GPIO pad voltage (permanent limit - no
-      analog voltage model behind the GPIO pins, not a TODO)
-- **Tests**: `tests/unit/test_adc.cpp` (11 cases)
+- [x] DMA DREQ line: `dreq_ready()`, gated by FCS.DREQ_EN ("assert DMA
+      requests when FIFO contains data") and real FIFO content, registered
+      for DREQ_ADC (36) in `Simulator`
+- [ ] Input from real GPIO pad voltage (permanent limit - no analog voltage
+      model behind the GPIO pins, not a TODO)
+- **Tests**: `tests/unit/test_adc.cpp` (12 cases)
 - **Priority**: MEDIUM
 - **Design**: RP2040 datasheet 4.9
 

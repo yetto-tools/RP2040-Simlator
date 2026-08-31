@@ -62,6 +62,11 @@ public:
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 
+    // DREQ readiness (datasheet 2.5.3.1: DREQ_I2Cn_TX/RX), gated by
+    // IC_DMA_CR.TDMAE/RDMAE like real hardware.
+    bool tx_dreq_ready() const;
+    bool rx_dreq_ready() const;
+
 private:
     struct Cmd { std::uint8_t byte; bool is_read; bool stop; };
 
@@ -76,6 +81,7 @@ private:
     std::uint32_t con_ = 0x65;   // reset-ish: master, 7-bit, fast mode
     std::uint32_t tar_ = 0;
     bool enabled_ = false;
+    std::uint32_t dma_cr_ = 0;   // IC_DMA_CR: bit0 RDMAE, bit1 TDMAE
 
     std::deque<Cmd> tx_cmds_;
     std::deque<std::uint8_t> rx_;
