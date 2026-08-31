@@ -133,6 +133,13 @@ void Simulator::sync_clock_pacing() {
     const auto sys_hz = static_cast<std::uint32_t>(clock_tree_.clk_sys_hz());
     adc_.set_clock_hz(static_cast<std::uint32_t>(clock_tree_.clk_adc_hz()), sys_hz);
     rtc_.set_clock_hz(static_cast<std::uint32_t>(clock_tree_.clk_rtc_hz()), sys_hz);
+    const auto peri_hz = static_cast<std::uint32_t>(clock_tree_.clk_peri_hz());
+    uart0_.set_clock_hz(peri_hz, sys_hz);
+    uart1_.set_clock_hz(peri_hz, sys_hz);
+    spi0_.set_clock_hz(peri_hz, sys_hz);
+    spi1_.set_clock_hz(peri_hz, sys_hz);
+    i2c0_.set_clock_hz(sys_hz, sys_hz);  // ic_clk == clk_sys on the RP2040
+    i2c1_.set_clock_hz(sys_hz, sys_hz);
 }
 
 ExecStatus Simulator::step() {
@@ -162,6 +169,12 @@ ExecStatus Simulator::step() {
     timer_.on_cycles(spent);
     dma_.on_cycles(spent);
     adc_.on_cycles(spent);
+    uart0_.on_cycles(spent);
+    uart1_.on_cycles(spent);
+    spi0_.on_cycles(spent);
+    spi1_.on_cycles(spent);
+    i2c0_.on_cycles(spent);
+    i2c1_.on_cycles(spent);
     pwm_.on_cycles(spent);
     watchdog_.on_cycles(spent);
     rtc_.on_cycles(spent);

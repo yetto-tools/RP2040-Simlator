@@ -12,12 +12,15 @@ constexpr std::uint32_t kSR_TFE = 1u << 0;   // TX FIFO empty
 constexpr std::uint32_t kSR_TNF = 1u << 1;   // TX FIFO not full
 constexpr std::uint32_t kSR_RNE = 1u << 2;   // RX FIFO not empty
 constexpr std::uint32_t kSR_RFF = 1u << 3;   // RX FIFO full
+constexpr std::uint32_t kSR_BSY = 1u << 4;   // busy transmitting/receiving
 
 constexpr std::uint32_t kCR1_LBM = 1u << 0;
 constexpr std::uint32_t kCR1_SSE = 1u << 1;
 
 constexpr std::uint32_t kINT_RX = 1u << 2;   // RXIM / RXRIS (>= half full)
 constexpr std::uint32_t kINT_TX = 1u << 3;   // TXIM / TXRIS (<= half empty)
+
+std::uint32_t mask_n(unsigned n) { return n >= 32 ? 0xFFFFFFFFu : ((1u << n) - 1u); }
 }  // namespace
 
 std::vector<std::uint8_t> Spi::take_output() {
@@ -26,16 +29,74 @@ std::vector<std::uint8_t> Spi::take_output() {
     return out;
 }
 
+std::uint32_t Spi::frame_bits() const { return (cr0_ & 0xFu) + 1u; }  // DSS: N -> N+1 bits
+
+std::uint32_t Spi::bit_period_cycles() const {
+    // datasheet 4.4.3: SCK freq = SSPCLK / (CPSDVSR x (1 + SCR)); CPSDVSR
+    // must be even and >= 2 (0/odd values leave the bit-rate generator off).
+    if (cpsdvsr_ < 2 || (cpsdvsr_ & 1u) != 0) return 0;
+    const std::uint32_t scr = (cr0_ >> 8) & 0xFFu;
+    return cpsdvsr_ * (1u + scr);
+}
+
+void Spi::tick_bit() {
+    if (bits_left_ > 0) {
+        if (--bits_left_ == 0) {
+            const std::uint32_t mask = mask_n(frame_bits());
+            const std::uint8_t mosi8 = static_cast<std::uint8_t>(tx_shift_ & 0xFFu);
+            mosi_log_.push_back(mosi8);
+
+            std::uint16_t miso;
+            if ((cr1_ & kCR1_LBM) != 0) {
+                miso = tx_shift_;                  // internal loopback
+            } else if (xfer_cb_) {
+                miso = xfer_cb_(mosi8);
+            } else if (!miso_.empty()) {
+                miso = miso_.front();
+                miso_.pop_front();
+            } else {
+                miso = 0xFFFFu;                    // idle MISO
+            }
+            if (rx_.size() < kFifoDepth) rx_.push_back(static_cast<std::uint16_t>(miso & mask));
+            refresh_irq();
+        }
+        return;
+    }
+    if ((cr1_ & kCR1_SSE) == 0 || tx_fifo_.empty()) return;
+    tx_shift_ = tx_fifo_.front();
+    tx_fifo_.pop_front();
+    bits_left_ = frame_bits();
+    refresh_irq();  // TNF may have just become true
+}
+
+void Spi::on_cycles(std::uint64_t sys_cycles) {
+    if ((cr1_ & kCR1_SSE) == 0) return;
+    clk_accum_ += sys_cycles * spi_hz_;
+    while (clk_accum_ >= sys_hz_) {
+        clk_accum_ -= sys_hz_;
+        const std::uint32_t period = bit_period_cycles();
+        if (period == 0) continue;  // CPSDVSR not configured: bit-rate generator off
+        if (++bit_cycle_accum_ >= period) {
+            bit_cycle_accum_ = 0;
+            tick_bit();
+        }
+    }
+}
+
 std::uint32_t Spi::read_sr() const {
-    std::uint32_t sr = kSR_TFE | kSR_TNF;  // instant TX: always empty / not full
+    std::uint32_t sr = 0;
+    if (tx_fifo_.empty()) sr |= kSR_TFE;
+    if (tx_fifo_.size() < kFifoDepth) sr |= kSR_TNF;
     if (!rx_.empty()) sr |= kSR_RNE;
     if (rx_.size() >= kFifoDepth) sr |= kSR_RFF;
+    if (!tx_fifo_.empty() || bits_left_ > 0) sr |= kSR_BSY;
     return sr;
 }
 
 std::uint32_t Spi::live_ris() const {
     if ((cr1_ & kCR1_SSE) == 0) return 0;
-    std::uint32_t ris = kINT_TX;  // TX always ready in this model
+    std::uint32_t ris = 0;
+    if (tx_fifo_.size() < kFifoDepth) ris |= kINT_TX;  // approximation: no half-full watermark
     if (!rx_.empty()) ris |= kINT_RX;
     return ris;
 }
@@ -59,6 +120,7 @@ BusResult<std::uint32_t> Spi::bus_read(std::uint32_t offset, BusWidth) {
         case kSSPCR0: return {cr0_, BusStatus::Ok};
         case kSSPCR1: return {cr1_, BusStatus::Ok};
         case kSSPSR:  return {read_sr(), BusStatus::Ok};
+        case kSSPCPSR: return {cpsdvsr_, BusStatus::Ok};
         case kSSPIMSC: return {imsc_, BusStatus::Ok};
         case kSSPRIS: return {live_ris(), BusStatus::Ok};
         case kSSPMIS: return {live_ris() & imsc_, BusStatus::Ok};
@@ -68,30 +130,18 @@ BusResult<std::uint32_t> Spi::bus_read(std::uint32_t offset, BusWidth) {
 
 BusStatus Spi::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     switch (offset) {
-        case kSSPDR: {
-            const std::uint8_t mosi = static_cast<std::uint8_t>(value & 0xFFu);
-            mosi_log_.push_back(mosi);
-
-            std::uint8_t miso;
-            if ((cr1_ & kCR1_LBM) != 0) {
-                miso = mosi;                       // internal loopback
-            } else if (xfer_cb_) {
-                miso = xfer_cb_(mosi);
-            } else if (!miso_.empty()) {
-                miso = miso_.front();
-                miso_.pop_front();
-            } else {
-                miso = 0xFF;                       // idle MISO
+        case kSSPDR:
+            if (tx_fifo_.size() < kFifoDepth) {
+                tx_fifo_.push_back(static_cast<std::uint16_t>(value & mask_n(frame_bits())));
             }
-            if (rx_.size() < kFifoDepth) rx_.push_back(miso);
             refresh_irq();
             break;
-        }
         case kSSPCR0: cr0_ = value; break;
         case kSSPCR1: cr1_ = value; refresh_irq(); break;
+        case kSSPCPSR: cpsdvsr_ = value & 0xFFu; break;
         case kSSPIMSC: imsc_ = value & 0xFu; refresh_irq(); break;
         case kSSPICR:  break;  // RORIC/RTIC: no sticky bits modelled
-        case kSSPCPSR: case kSSPDMACR: break;
+        case kSSPDMACR: break;  // DMA request lines not modelled
         default: break;
     }
     return BusStatus::Ok;

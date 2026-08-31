@@ -408,14 +408,31 @@ Week 12:    PHASE 9 - Documentation & Release
 #### P4.1: UART0 / UART1 Controller (PL011)  [IN PROGRESS]
 - [x] `Uart` BusPeripheral (`src/peripherals/uart.{h,cpp}`) @ 0x40034000 /
       0x40038000; UART0_IRQ = IRQ20, UART1_IRQ = IRQ21
-- [x] UARTDR TX -> output log + on_transmit() callback; RX FIFO (32-deep)
-      fed by feed(); UARTFR TXFE/RXFE/RXFF
+- [x] UARTDR TX -> TX FIFO -> output log + on_transmit() callback (paced, see
+      below); RX FIFO (32-deep) fed via the wire queue; UARTFR
+      TXFE/TXFF/RXFE/RXFF/BUSY
 - [x] UARTCR (UARTEN/TXE/RXE), UARTLCR_H store, UARTIMSC / UARTRIS / UARTMIS /
       UARTICR; RXRIS + TXRIS level-driven onto the NVIC
 - [x] Wired into Simulator (both instances)
-- [ ] Baud-rate timing (bit-accurate TX/RX), framing/parity/overrun errors,
-      break detection, DMA request lines
-- **Tests**: `tests/unit/test_uart.cpp` (5 cases)
+- [x] Baud-rate timing (bit-accurate TX/RX): UARTIBRD/UARTFBRD drive a 16x
+      fractional bit-period generator (x64 fixed point, matching the PL011
+      hardware's own fractional accumulator) paced from `on_cycles()` against
+      clk_peri; a byte takes exactly `bits_per_frame()` bit periods to clock
+      in or out. IBRD=0 (the reset value) disables the baud generator
+      entirely, matching the datasheet - no data moves until firmware
+      configures it.
+- [x] Framing/parity/break errors: no physical wire to derive these from, so
+      the test bench tags them explicitly via `feed(byte, RxError)`; surfaced
+      per-datasheet in UARTDR[11:8], UARTRSR/ECR, and UARTRIS FERIS/PERIS/
+      BERIS (approximation: RIS bits are sticky-latched at arrival rather
+      than tracking the exact FIFO-head character, see uart.h)
+- [x] Overrun (OE) detected for real: a paced RX arrival finds the FIFO
+      already full -> byte dropped, OE set (sticky, RSR/ECR + RIS.OERIS)
+- [x] Break detection (LCR_H.BRK): while set, TX holds off starting any new
+      byte (line held low), matching the "continuous break" behaviour
+- [ ] DMA request lines (UARTDMACR stored/ignored - no peripheral-level DREQ
+      handshake modelled; see the DMA controller's own DREQ approximation)
+- **Tests**: `tests/unit/test_uart.cpp` (11 cases)
 - **Effort**: 30 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3, P1.4
@@ -426,35 +443,54 @@ Week 12:    PHASE 9 - Documentation & Release
 #### P4.3: SPI0 / SPI1 Controller (PL022)  [IN PROGRESS]
 - [x] `Spi` BusPeripheral (`src/peripherals/spi.{h,cpp}`) @ 0x4003C000 /
       0x40040000; SPI0_IRQ = IRQ18, SPI1_IRQ = IRQ19
-- [x] SSPDR write = full-duplex byte transfer: MOSI -> output log +
+- [x] SSPDR write = full-duplex frame transfer: MOSI -> output log +
       on_transfer() callback; MISO from callback / feed() queue / 0xFF idle;
       internal loopback (CR1.LBM)
-- [x] SSPSR (TFE/TNF always, RNE/RFF from the 8-deep RX FIFO), SSPCR0/CR1,
+- [x] SSPSR (TFE/TNF/RNE/RFF/BSY from the real 8-deep TX/RX FIFOs), SSPCR0/CR1,
       SSPIMSC / SSPRIS / SSPMIS; RXRIS + TXRIS -> NVIC
-- [ ] CPOL/CPHA modes, frame size 4-16, bit-rate timing, chip-select lines
-- **Tests**: `tests/unit/test_spi.cpp` (7 cases)
+- [x] Bit-rate timing: SSPCPSR x (1 + SSPCR0.SCR) SSPCLK cycles per bit
+      (datasheet 4.4.3, plain integer divider - no fractional part, unlike
+      UART), paced from `on_cycles()` against clk_peri; a frame takes exactly
+      `frame_bits()` bit periods. CPSDVSR < 2 or odd leaves the bit-rate
+      generator off (datasheet: CPSDVSR must be even, >= 2) - no data moves.
+- [x] Frame size 4-16 (SSPCR0.DSS): the TX/RX FIFOs and SSPDR honour the
+      configured width; the test-bench hooks (feed/on_transfer/output)
+      remain 8-bit for convenience, zero-extended/truncated at the boundary
+- [ ] CPOL/CPHA: stored in CR0 but no observable effect - this is a
+      whole-frame behavioral model, not a bit-level clock/data waveform
+      simulation, so there is nothing for polarity/phase to change (see
+      spi.h)
+- [ ] Chip-select lines (software bit-bangs CS via GPIO; out of this
+      peripheral's scope)
+- **Tests**: `tests/unit/test_spi.cpp` (11 cases)
 - **Design**: RP2040 datasheet 4.4
 
-#### P4.4: SPI1 Controller
-- [ ] Identical to SPI0
-- **Tests**: 10+ differential tests
-- **Effort**: 10 hours
-- **Priority**: HIGH
-- **Dependencies**: P4.3
+#### P4.4: SPI1 Controller  [DONE]
+- [x] Second `Spi` instance (see P4.3); SPI1_IRQ = IRQ19, wired into
+      `Simulator` alongside SPI0 (clock pacing + on_cycles)
 
 #### P4.5 / P4.6: I2C0 / I2C1 Controller (DW_apb_i2c)  [IN PROGRESS]
 - [x] `I2c` BusPeripheral (`src/peripherals/i2c.{h,cpp}`) @ 0x40044000 /
       0x40048000; I2C0_IRQ = IRQ23, I2C1_IRQ = IRQ24
-- [x] Master-mode functional model: IC_ENABLE, IC_TAR, IC_DATA_CMD
-      (write byte / read command with STOP bit) against a registered
-      `set_slave(addr7, fn)` callback; 16-deep RX FIFO
-- [x] IC_STATUS (TFNF/TFE/RFNE/RFF), IC_RXFLR, IC_RAW_INTR_STAT / IC_INTR_MASK
-      / IC_INTR_STAT (RX_FULL, TX_ABRT, STOP_DET), IC_TX_ABRT_SOURCE,
-      IC_CLR_* -> I2C IRQ
-- [x] Address-NACK and TX-data-NACK aborts
-- [ ] Bus-level timing, clock stretching, 10-bit addressing, slave mode,
-      arbitration loss, DMA
-- **Tests**: `tests/unit/test_i2c.cpp` (5 cases)
+- [x] Master-mode model: IC_ENABLE, IC_TAR, IC_DATA_CMD (write byte / read
+      command with STOP bit) queued into a real 16-deep TX command FIFO,
+      executed against a registered `set_slave(addr7, fn)` callback once its
+      byte period elapses; 16-deep RX FIFO
+- [x] IC_STATUS (TFNF/TFE/RFNE/RFF from the real FIFOs), IC_TXFLR/IC_RXFLR,
+      IC_RAW_INTR_STAT / IC_INTR_MASK / IC_INTR_STAT (RX_FULL, TX_ABRT,
+      STOP_DET), IC_TX_ABRT_SOURCE, IC_CLR_* -> I2C IRQ
+- [x] Address-NACK and TX-data-NACK aborts (evaluated when the queued command
+      executes, not when IC_DATA_CMD is written)
+- [x] Bus-level timing: IC_SS/FS_SCL_HCNT/LCNT (selected by CON.SPEED) give
+      the SCL period in ic_clk (== clk_sys on the RP2040) cycles; a
+      transaction takes 9 SCL periods (8 data bits + ACK), paced from
+      `on_cycles()`. HCNT=LCNT=0 (the reset value) leaves the bit-rate
+      generator off - commands stay queued, nothing executes.
+- [x] Clock stretching: `stretch_next(cycles)` lets the test bench (playing
+      the slave) add extra ic_clk cycles to the next transaction only, since
+      there's no real open-drain SCL line for a slave to hold low against
+- [ ] 10-bit addressing, slave mode, arbitration loss, DMA
+- **Tests**: `tests/unit/test_i2c.cpp` (8 cases)
 - **Design**: RP2040 datasheet 4.3
 
 ---
