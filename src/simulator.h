@@ -30,6 +30,7 @@
 #include "peripherals/pwm.h"
 #include "peripherals/sio.h"
 #include "peripherals/spi.h"
+#include "peripherals/stub_peripheral.h"
 #include "peripherals/timer.h"
 #include "peripherals/uart.h"
 #include "peripherals/usb.h"
@@ -119,6 +120,15 @@ private:
     Resets resets_;
     Sysinfo sysinfo_;
     UsbCtrl usb_{cpu_};
+
+    // APB blocks that must decode but whose behaviour is not modelled.
+    StubPeripheral syscfg_{"SYSCFG", 0x40004000u};
+    StubPeripheral busctrl_{"BUSCTRL", 0x40030000u};
+    StubPeripheral psm_{"PSM", 0x40010000u, {{0x0Cu, 0x0001FFFFu}}};   // DONE: all powered
+    StubPeripheral vreg_{"VREG_AND_CHIP_RESET", 0x40064000u};
+    StubPeripheral tbman_{"TBMAN", 0x4006C000u, {{0x00u, 0x1u}}};      // PLATFORM: ASIC
+    StubPeripheral io_qspi_{"IO_QSPI", 0x40018000u};
+    StubPeripheral pads_qspi_{"PADS_QSPI", 0x40020000u};
     Watchdog watchdog_;
     PadsBank0 pads_{gpio_};
     Rtc rtc_{cpu_};

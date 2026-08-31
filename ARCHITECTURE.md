@@ -243,18 +243,18 @@ simulator; the rest are decoded as unmapped register space.
 | Base | Component | Modelled | Notes |
 |------|-----------|----------|-------|
 | **0x40000000** | **SYSINFO** | yes | CHIP_ID / PLATFORM / GITREF (read-only) |
-| 0x40004000 | SYSCFG | no | |
+| 0x40004000 | SYSCFG | stub | decodes, stores writes |
 | **0x40008000** | **CLOCKS** | yes | 10 clock generators (functional) |
 | **0x4000C000** | **RESETS** | yes | RESET / RESET_DONE (all peripherals "ready") |
-| 0x40010000 | PSM | no | power-on state machine |
-| **0x40014000** | **IO_BANK0** | yes | GPIOx_CTRL FUNCSEL + per-pin interrupts |
-| 0x40018000 | IO_QSPI | no | |
+| 0x40010000 | PSM | stub | DONE reads "all powered" |
+| **0x40014000** | **IO_BANK0** | yes | GPIOx_CTRL FUNCSEL + overrides + per-pin interrupts |
+| 0x40018000 | IO_QSPI | stub | |
 | **0x4001C000** | **PADS_BANK0** | yes | pulls -> Gpio; drive/schmitt stored |
-| 0x40020000 | PADS_QSPI | no | |
+| 0x40020000 | PADS_QSPI | stub | |
 | **0x40024000** | **XOSC** | yes | STABLE/ENABLED once the enable magic is written |
 | **0x40028000** | **PLL_SYS** | yes | CS.LOCK + `output_hz` from FBDIV/POSTDIV |
 | **0x4002C000** | **PLL_USB** | yes | same `Pll` class |
-| 0x40030000 | BUSCTRL | no | bus priority / perf counters |
+| 0x40030000 | BUSCTRL | stub | bus priority / perf counters |
 | **0x40034000 / 0x40038000** | **UART0 / UART1** | yes | PL011 functional; -> IRQ20 / IRQ21 |
 | **0x4003C000 / 0x40040000** | **SPI0 / SPI1** | yes | PL022 functional; -> IRQ18 / IRQ19 |
 | **0x40044000 / 0x40048000** | **I2C0 / I2C1** | yes | DW_apb_i2c master; -> IRQ23 / IRQ24 |
@@ -264,8 +264,8 @@ simulator; the rest are decoded as unmapped register space.
 | **0x40058000** | **WATCHDOG** | yes | down-counter + SCRATCH0..7, TICK |
 | **0x4005C000** | **RTC** | yes | full date/time rollover; -> IRQ25 |
 | **0x40060000** | **ROSC** | yes | boots enabled + stable |
-| 0x40064000 | VREG_AND_CHIP_RESET | no | |
-| 0x4006C000 | TBMAN | no | |
+| 0x40064000 | VREG_AND_CHIP_RESET | stub | |
+| 0x4006C000 | TBMAN | stub | PLATFORM reads ASIC |
 | **0x50000000** | **DMA** | yes | 12 channels, DREQ pacing; -> IRQ11 / IRQ12 |
 | **0x50100000 / 0x50110000** | **USBCTRL_DPRAM / _REGS** | yes | device controller, EP0 only (§4.9); -> IRQ5 |
 | **0x50200000 / 0x50300000** | **PIO0 / PIO1** | yes | 4 SMs each; -> IRQ7..10 |

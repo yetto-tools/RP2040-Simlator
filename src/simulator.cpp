@@ -30,6 +30,13 @@ Simulator::Simulator() {
     resets_.attach(mem_);
     sysinfo_.attach(mem_);
     usb_.attach(mem_);
+    syscfg_.attach(mem_);
+    busctrl_.attach(mem_);
+    psm_.attach(mem_);
+    vreg_.attach(mem_);
+    tbman_.attach(mem_);
+    io_qspi_.attach(mem_);
+    pads_qspi_.attach(mem_);
     watchdog_.attach(mem_);
     pads_.attach(mem_);
     rtc_.attach(mem_);
