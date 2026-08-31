@@ -104,7 +104,14 @@ void StateMachine::apply_sideset(const PioInstr& in) {
 }
 
 bool StateMachine::exec(const PioInstr& in) {
-    apply_sideset(in);
+    // OUT EXEC / MOV EXEC inject a second instruction into the same execution
+    // slot (datasheet 3.4.2): the delay/side-set of the *injected* instruction
+    // applies, not the delay/side-set of the OUT/MOV that fetched it. So the
+    // side-set of this outer instruction is skipped here; the recursive exec()
+    // call for the injected instruction applies its own side-set normally.
+    const bool is_exec_inject = (in.op == PioOp::OUT && in.destination == kOutExec) ||
+                                 (in.op == PioOp::MOV && in.destination == kMovDestExec);
+    if (!is_exec_inject) apply_sideset(in);
     switch (in.op) {
         case PioOp::JMP: {
             bool take = false;
@@ -146,7 +153,13 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kMovIsr: src = isr; break;
                 case kMovOsr: src = osr; break;
                 case kMovPins: src = read_pins(cfg.in_base, 32); break;
-                case kMovStatus: src = 0; break;   // FIFO-level status: deferred
+                case kMovStatus: {
+                    // datasheet 3.5.4: all-ones if the selected FIFO's level is
+                    // below STATUS_N, else all-zeros.
+                    const unsigned level = cfg.status_sel_rx ? rx.level() : tx.level();
+                    src = (level < cfg.status_n) ? 0xFFFFFFFFu : 0u;
+                    break;
+                }
                 default: break;
             }
             switch (in.mov_op) {
@@ -154,13 +167,18 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kMovBitRev: src = bit_reverse(src); break;
                 default: break;
             }
+            if (in.destination == kMovDestExec) {
+                const PioInstr injected = pio_decode(static_cast<std::uint16_t>(src & 0xFFFFu));
+                cur_ = injected;
+                return exec(injected);
+            }
             switch (in.destination) {
                 case kMovX: x = src; break;
                 case kMovY: y = src; break;
+                case kMovDestPc: pc = static_cast<std::uint8_t>(src & 0x1Fu); return true;
                 case kMovIsr: isr = src; isr_shift_count = 0; break;
                 case kMovOsr: osr = src; osr_shift_count = 0; break;
                 case kMovPins: write_pins(cfg.out_base, cfg.out_count, src, /*dirs=*/false); break;
-                case 5 /*EXEC*/: break;            // MOV EXEC: deferred
                 default: break;
             }
             advance_pc(in);
@@ -210,6 +228,11 @@ bool StateMachine::exec(const PioInstr& in) {
             osr_shift_count = osr_shift_count + n;
             if (osr_shift_count > 32) osr_shift_count = 32;
 
+            if (in.destination == kOutExec) {
+                const PioInstr injected = pio_decode(static_cast<std::uint16_t>(out_val & 0xFFFFu));
+                cur_ = injected;
+                return exec(injected);
+            }
             switch (in.destination) {
                 case kOutX: x = out_val; break;
                 case kOutY: y = out_val; break;
@@ -218,7 +241,6 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kOutIsr: isr = out_val; isr_shift_count = n; break;
                 case kOutPins:    write_pins(cfg.out_base, cfg.out_count, out_val, /*dirs=*/false); break;
                 case kOutPindirs: write_pins(cfg.out_base, cfg.out_count, out_val, /*dirs=*/true); break;
-                case kOutExec: break;                    // OUT EXEC: deferred
                 default: break;
             }
             advance_pc(in);
@@ -341,7 +363,7 @@ StateMachine::TickOutcome StateMachine::tick() {
 
     // Resolve a pending autopush / autopull from the previous instruction.
     if (stall_ == Stall::AutoPush) {
-        if (!rx.push(isr)) return {false, true, false};
+        if (!rx.push(isr)) { TickOutcome o; o.stalled = true; o.rx_stall = true; return o; }
         isr = 0;
         isr_shift_count = 0;
         stall_ = Stall::None;
@@ -351,7 +373,7 @@ StateMachine::TickOutcome StateMachine::tick() {
     }
     if (stall_ == Stall::AutoPull) {
         std::uint32_t v = 0;
-        if (!tx.pop(v)) return {false, true, false};
+        if (!tx.pop(v)) { TickOutcome o; o.stalled = true; o.tx_stall = true; return o; }
         osr = v;
         osr_shift_count = 0;
         stall_ = Stall::None;
@@ -375,14 +397,27 @@ StateMachine::TickOutcome StateMachine::tick() {
     const bool ok = exec(in);
     if (!ok) {
         if (stall_ == Stall::None) stall_ = Stall::Instr;
-        return {false, true, false};
+        TickOutcome o;
+        o.stalled = true;
+        // cur_, not `in`: OUT EXEC / MOV EXEC may have reassigned it to the
+        // instruction actually blocked on the FIFO.
+        if (stall_ == Stall::AutoPush || (stall_ == Stall::Instr && cur_.op == PioOp::PUSH)) o.rx_stall = true;
+        if (stall_ == Stall::AutoPull || (stall_ == Stall::Instr && cur_.op == PioOp::PULL)) o.tx_stall = true;
+        return o;
     }
     if (stall_ == Stall::AutoPush || stall_ == Stall::AutoPull) {
-        return {false, true, false};
+        TickOutcome o;
+        o.stalled = true;
+        o.rx_stall = (stall_ == Stall::AutoPush);
+        o.tx_stall = (stall_ == Stall::AutoPull);
+        return o;
     }
 
     stall_ = Stall::None;
-    delay_left_ = delay_of(in);
+    // Use cur_, not the locally-decoded `in`: OUT EXEC / MOV EXEC reassign
+    // cur_ to the injected instruction, whose delay/side-set is what actually
+    // applies (see the comment in exec()).
+    delay_left_ = delay_of(cur_);
     return {true, false, false};
 }
 

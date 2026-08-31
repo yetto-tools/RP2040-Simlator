@@ -153,6 +153,11 @@ ExecStatus Simulator::step() {
     for (std::uint64_t i = 0; i < spent; ++i) {
         pio0_.tick();
         pio1_.tick();
+        // Latched per cycle, not after the loop: a stall on a non-final cycle
+        // of a multi-cycle CPU instruction would otherwise be lost when
+        // PioBlock overwrites its last_outcome() on the next tick().
+        pio0_regs_.poll_fdebug();
+        pio1_regs_.poll_fdebug();
     }
     timer_.on_cycles(spent);
     dma_.on_cycles(spent);

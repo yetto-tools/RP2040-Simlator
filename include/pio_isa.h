@@ -31,6 +31,11 @@ enum PioOutDest : std::uint8_t   { kOutPins = 0, kOutX = 1, kOutY = 2, kOutNull 
                                    kOutPindirs = 4, kOutPc = 5, kOutIsr = 6, kOutExec = 7 };
 enum PioMovReg : std::uint8_t    { kMovPins = 0, kMovX = 1, kMovY = 2, kMovNull = 3,
                                    kMovStatus = 5, kMovIsr = 6, kMovOsr = 7 };
+// MOV destination uses a different encoding than MOV source for indices 4/5
+// (datasheet 3.4.6): source 4 is reserved, 5 is STATUS; destination 4 is
+// EXEC, 5 is PC. destination 0/1/2/6/7 (PINS/X/Y/ISR/OSR) match the source
+// enum above and reuse those names.
+enum PioMovDest : std::uint8_t   { kMovDestExec = 4, kMovDestPc = 5 };
 enum PioMovOp : std::uint8_t     { kMovNone = 0, kMovInvert = 1, kMovBitRev = 2 };
 enum PioSetDest : std::uint8_t   { kSetPins = 0, kSetX = 1, kSetY = 2, kSetPindirs = 4 };
 enum PioWaitSource : std::uint8_t{ kWaitGpio = 0, kWaitPin = 1, kWaitIrq = 2 };

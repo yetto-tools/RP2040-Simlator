@@ -45,6 +45,8 @@ void PioRegisters::write_sm_execctrl(unsigned sm, std::uint32_t value) {
     c.jmp_pin = static_cast<std::uint8_t>(field(value, 24, 5));
     c.sideset_pindir = ((value >> 29) & 1u) != 0;
     c.sideset_opt = ((value >> 30) & 1u) != 0;
+    c.status_sel_rx = ((value >> 4) & 1u) != 0;
+    c.status_n = static_cast<std::uint8_t>(field(value, 0, 4));
 }
 
 void PioRegisters::write_sm_shiftctrl(unsigned sm, std::uint32_t value) {
@@ -100,6 +102,16 @@ std::uint32_t PioRegisters::compute_intr() const {
     return v;
 }
 
+void PioRegisters::poll_fdebug() {
+    // datasheet 3.5.4 FDEBUG: one bit per SM per group.
+    // [31:28] RXSTALL  [27:24] RXUNDER  [23:20] TXOVER  [19:16] TXSTALL
+    for (unsigned i = 0; i < PioBlock::kNumSm; ++i) {
+        const StateMachine::TickOutcome o = block_.last_outcome(i);
+        if (o.rx_stall) fdebug_ |= (1u << (28 + i));
+        if (o.tx_stall) fdebug_ |= (1u << (16 + i));
+    }
+}
+
 void PioRegisters::poll_interrupts() {
     if (nvic_irq0_ == 0) return;
     const std::uint32_t intr = compute_intr();
@@ -125,7 +137,7 @@ BusResult<std::uint32_t> PioRegisters::reg_read(std::uint32_t offset, BusWidth) 
     if (offset >= kRXF0 && offset < kRXF0 + 16) {
         const unsigned sm = (offset - kRXF0) / 4u;
         std::uint32_t v = 0;
-        block_.sm(sm).rx.pop(v);  // underflow returns stale 0 (FDEBUG bit not modelled)
+        if (!block_.sm(sm).rx.pop(v)) fdebug_ |= (1u << (24 + sm));  // RXUNDER
         return {v, BusStatus::Ok};
     }
     if (offset >= kINSTR_MEM0 && offset < kINSTR_MEM0 + 32 * 4) {
@@ -147,7 +159,7 @@ BusResult<std::uint32_t> PioRegisters::reg_read(std::uint32_t offset, BusWidth) 
     switch (offset) {
         case kCTRL:   return {ctrl_, BusStatus::Ok};
         case kFSTAT:  return {read_fstat(), BusStatus::Ok};
-        case kFDEBUG: return {0u, BusStatus::Ok};
+        case kFDEBUG: return {fdebug_, BusStatus::Ok};
         case kFLEVEL: return {read_flevel(), BusStatus::Ok};
         case kIRQ:    return {block_.irq(), BusStatus::Ok};
         case kINTR:   return {compute_intr(), BusStatus::Ok};
@@ -164,7 +176,7 @@ BusResult<std::uint32_t> PioRegisters::reg_read(std::uint32_t offset, BusWidth) 
 BusStatus PioRegisters::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     if (offset >= kTXF0 && offset < kTXF0 + 16) {
         const unsigned sm = (offset - kTXF0) / 4u;
-        block_.sm(sm).tx.push(value);  // overflow drops (FDEBUG bit not modelled)
+        if (!block_.sm(sm).tx.push(value)) fdebug_ |= (1u << (20 + sm));  // TXOVER
         return BusStatus::Ok;
     }
     if (offset >= kINSTR_MEM0 && offset < kINSTR_MEM0 + 32 * 4) {
@@ -187,7 +199,7 @@ BusStatus PioRegisters::reg_write(std::uint32_t offset, std::uint32_t value, Bus
 
     switch (offset) {
         case kCTRL: write_ctrl(value); break;
-        case kFDEBUG: break;  // write-1-clear bits not modelled
+        case kFDEBUG: fdebug_ &= ~value; break;  // write-1-clear
         case kIRQ:
             for (unsigned n = 0; n < 8; ++n)
                 if ((value >> n) & 1u) block_.set_irq(n, false);  // write-1-clear

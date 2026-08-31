@@ -22,6 +22,12 @@ TEST_CASE("individual instructions render as pioasm text") {
     CHECK(pio_disassemble(0x8060u) == "push iffull block");
 }
 
+TEST_CASE("MOV destination 4/5 are EXEC/PC, not the source-side STATUS encoding") {
+    CHECK(pio_disassemble(0xA081u) == "mov exec, x");  // dest 4 = EXEC
+    CHECK(pio_disassemble(0xA0A1u) == "mov pc, x");     // dest 5 = PC (not "status")
+    CHECK(pio_disassemble(0xA025u) == "mov x, status"); // source 5 = STATUS
+}
+
 TEST_CASE("delay and side-set split out of the [12:8] field") {
     CHECK(pio_disassemble(0xE101u) == "set pins, 1 [1]");
     // side-set 1 bit, no opt: word 0x6221 = out x,1 side 0 [2]

@@ -243,6 +243,71 @@ TEST_CASE_FIXTURE(SmFix, "the delay field idles the SM for N extra cycles") {
     CHECK(sm.x == 1);
 }
 
+TEST_CASE_FIXTURE(SmFix, "MOV x, status reflects TX/RX FIFO level vs STATUS_N") {
+    prog[0] = 0xA025;  // mov x, status
+    sm.cfg.status_sel_rx = false;  // TXLEVEL
+    sm.cfg.status_n = 2;
+
+    // tx level 0 < 2 -> all-ones
+    step_instr();
+    CHECK(sm.x == 0xFFFFFFFFu);
+
+    // tx level 2, not < 2 -> all-zeros
+    sm.restart();
+    sm.tx.push(1);
+    sm.tx.push(2);
+    step_instr();
+    CHECK(sm.x == 0u);
+
+    // RXLEVEL selector
+    sm.restart();
+    sm.cfg.status_sel_rx = true;
+    sm.rx.push(1);
+    step_instr();  // rx level 1 < 2 -> all-ones
+    CHECK(sm.x == 0xFFFFFFFFu);
+}
+
+TEST_CASE_FIXTURE(SmFix, "OUT EXEC injects the shifted-out word as an instruction") {
+    prog[0] = 0x60F0;  // out exec, 16
+    sm.osr = 0x0000E025u;  // encodes "set x, 5"
+    sm.osr_shift_count = 0;
+    step_instr();
+    CHECK(sm.x == 5u);
+    CHECK(sm.pc == 1u);  // PC moved once, for the whole OUT EXEC + injected slot
+}
+
+TEST_CASE_FIXTURE(SmFix, "MOV EXEC injects the moved word as an instruction") {
+    prog[0] = 0xA081;  // mov exec, x
+    sm.x = 0x0000E047u;  // encodes "set y, 7"
+    step_instr();
+    CHECK(sm.y == 7u);
+    CHECK(sm.pc == 1u);
+}
+
+TEST_CASE_FIXTURE(SmFix, "MOV PC jumps directly to the moved value") {
+    prog[0] = 0xA0A1;  // mov pc, x
+    sm.x = 9;
+    step_instr();
+    CHECK(sm.pc == 9u);
+}
+
+TEST_CASE_FIXTURE(SmFix, "the injected instruction's own delay applies, not the OUT EXEC's") {
+    prog[0] = 0x65F0;  // out exec, 16  [5]  (this delay must be ignored)
+    sm.osr = 0x0000E341u;  // encodes "set y, 1  [3]"
+    sm.osr_shift_count = 0;
+
+    auto o = sm.tick();
+    CHECK(o.executed);
+    CHECK(sm.y == 1u);
+    CHECK(sm.pc == 1u);
+    for (int i = 0; i < 3; ++i) {
+        o = sm.tick();
+        CHECK(o.delayed);
+    }
+    o = sm.tick();
+    CHECK(o.executed);  // delay of exactly 3 (the injected instruction's), not 5
+}
+
 TEST_CASE_FIXTURE(SmFix, "a disabled state machine does nothing") {
     sm.set_enabled(false);
     prog[0] = 0xE021;  // set x, 1

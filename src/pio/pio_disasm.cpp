@@ -33,11 +33,21 @@ const char* out_dst(std::uint8_t d) {
         case kOutIsr: return "isr"; case kOutExec: return "exec"; default: return "?";
     }
 }
-const char* mov_reg(std::uint8_t r) {
+// MOV source: 0/1/2 PINS/X/Y, 3 NULL, 5 STATUS, 6/7 ISR/OSR.
+const char* mov_src(std::uint8_t r) {
     switch (r) {
         case kMovPins: return "pins"; case kMovX: return "x"; case kMovY: return "y";
         case kMovNull: return "null"; case kMovStatus: return "status"; case kMovIsr: return "isr";
         case kMovOsr: return "osr"; default: return "?";
+    }
+}
+// MOV destination uses a different encoding for 4/5 than MOV source
+// (datasheet 3.4.6): 4 is EXEC, 5 is PC (not STATUS).
+const char* mov_dst(std::uint8_t r) {
+    switch (r) {
+        case kMovPins: return "pins"; case kMovX: return "x"; case kMovY: return "y";
+        case kMovDestExec: return "exec"; case kMovDestPc: return "pc";
+        case kMovIsr: return "isr"; case kMovOsr: return "osr"; default: return "?";
     }
 }
 const char* set_dst(std::uint8_t d) {
@@ -85,8 +95,8 @@ std::string pio_disassemble(std::uint16_t word, unsigned sideset_count, bool sid
         case PioOp::MOV: {
             const char* op = in.mov_op == kMovInvert ? "~"
                            : in.mov_op == kMovBitRev ? "::" : "";
-            s = "mov " + std::string(mov_reg(in.destination)) + ", " + op +
-                std::string(mov_reg(in.source));
+            s = "mov " + std::string(mov_dst(in.destination)) + ", " + op +
+                std::string(mov_src(in.source));
             break;
         }
         case PioOp::IRQ:

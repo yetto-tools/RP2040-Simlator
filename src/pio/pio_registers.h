@@ -3,7 +3,7 @@
 // INSTR_MEM, the per-SM config registers and the IRQ register.
 //
 // PIO0 lives at 0x50200000, PIO1 at 0x50300000. The block->NVIC interrupt
-// routing (INTR / IRQ0_INTE / ...) is present as state but not yet wired.
+// routing (INTR / IRQ0_INTE / ...) is wired via connect_nvic()/poll_interrupts().
 #ifndef RP2040_PIO_PIO_REGISTERS_H
 #define RP2040_PIO_PIO_REGISTERS_H
 
@@ -39,6 +39,13 @@ public:
     void connect_core1(Cpu* core1) { nvic_.connect(core1); }
     void poll_interrupts();
 
+    // Latch this cycle's per-SM RXSTALL/TXSTALL into the sticky FDEBUG bits.
+    // Call once per system clock, after PioBlock::tick() (datasheet 3.5.4);
+    // unlike poll_interrupts() this cannot be deferred to the end of a
+    // multi-cycle CPU instruction, since a stall on an intermediate cycle
+    // would otherwise be lost when PioBlock overwrites its last_outcome().
+    void poll_fdebug();
+
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
@@ -64,6 +71,7 @@ private:
     std::array<std::uint32_t, PioBlock::kNumSm> pinctrl_{};
     std::uint32_t irq0_inte_ = 0, irq0_intf_ = 0;
     std::uint32_t irq1_inte_ = 0, irq1_intf_ = 0;
+    std::uint32_t fdebug_ = 0;  // sticky, write-1-clear (datasheet 3.5.4)
 };
 
 }  // namespace rp2040

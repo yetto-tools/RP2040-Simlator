@@ -202,7 +202,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 2: PIO (Programmable I/O) (Weeks 3-5)
 
-#### P2.1: PIO Block Architecture  [IN PROGRESS]
+#### P2.1: PIO Block Architecture  [DONE]
 - [x] Instruction decoder for all 9 PIO ops (`include/pio_isa.h`,
       `src/pio/pio_decode.cpp`)
 - [x] State-machine registers X, Y, OSR, ISR, PC + shift counters
@@ -213,7 +213,9 @@ Week 12:    PHASE 9 - Documentation & Release
       per-SM 16.8 fractional clock divider, round-robin `tick()`
       (`src/pio/pio_block.{h,cpp}`)
 - [x] SM wired to `Gpio` (per-block driver) + block IRQ register
-- [ ] 2 PIO blocks + CPU-facing register block (P2.7)
+- [x] 2 PIO blocks + CPU-facing register block: `Simulator` owns `pio0_`/
+      `pio1_` (`PioBlock`) each with its own `PioRegisters` @ 0x50200000 /
+      0x50300000, attached to the bus and per-core NVIC (see P2.7)
 - **Tests**: test_pio_decode (10), test_pio_sm (18), test_pio_block (7)
 - **Effort**: 30 hours
 - **Priority**: CRITICAL (40% of Phase 2)
@@ -221,47 +223,56 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Design**: RP2040 datasheet 3.2-3.5
 - **Files**: `include/pio_isa.h`, `src/pio/{pio_decode,state_machine,pio_fifo}`
 
-#### P2.2: PIO ISA - JMP, WAIT, IN, OUT  [IN PROGRESS]
+#### P2.2: PIO ISA - JMP, WAIT, IN, OUT  [DONE]
 - [x] JMP: always, !X, X-- (unconditional decrement), !Y, Y--, X!=Y, !OSRE, PIN
 - [x] WAIT: GPIO level, PIN (IN_BASE-relative), IRQ (with auto-clear on match)
 - [x] IN: X/Y/NULL/ISR/OSR/PINS; left/right shift; ISR accumulation
 - [x] OUT: X/Y/NULL/PC/ISR/PINS/PINDIRS; left/right shift from OSR
 - [x] side-set (data + optional enable bit), MOV PINS, SET PINS/PINDIRS
-- [ ] OUT EXEC / MOV EXEC / MOV STATUS
+- [x] OUT EXEC / MOV EXEC / MOV STATUS: the injected instruction executes via
+      a recursive `StateMachine::exec()` call, taking over PC advance and
+      (per datasheet 3.4.2) supplying its own delay/side-set in place of the
+      OUT/MOV's; MOV STATUS reads TXLEVEL/RXLEVEL vs EXECCTRL.STATUS_N
 - **Tests**: test_pio_sm + test_pio_block
 - **Effort**: 45 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P2.1
 
-#### P2.3: PIO ISA - PUSH, PULL, MOV, SET, IRQ  [IN PROGRESS]
+#### P2.3: PIO ISA - PUSH, PULL, MOV, SET, IRQ  [DONE]
 - [x] PUSH: iffull, block/non-block (data-lost on non-block + full), ISR clear
 - [x] PULL: ifempty, block/non-block (OSR <- X on non-block + empty), autopull
 - [x] autopush / autopull with threshold + mid-instruction stall + resume
-- [x] MOV: none / invert / bit-reverse; X/Y/ISR/OSR/NULL/PINS
+- [x] MOV: none / invert / bit-reverse; X/Y/ISR/OSR/NULL/PINS/PC/EXEC; STATUS
+      source (TXLEVEL/RXLEVEL vs STATUS_N)
 - [x] SET: X, Y, PINS, PINDIRS
 - [x] IRQ: set / clear / set+wait (relative-index resolution), block IRQ register
-- [ ] MOV STATUS + OUT/MOV EXEC
+- [x] MOV STATUS + OUT/MOV EXEC (see P2.2)
 - **Tests**: test_pio_sm + test_pio_block
 - **Effort**: 35 hours
 
 - **Dependencies**: P2.1, P2.2
 
-#### P2.4: FIFO Management  [IN PROGRESS]
+#### P2.4: FIFO Management  [DONE]
 - [x] TX / RX FIFO: 4-deep 32-bit ring, full/empty/level, join to 8-deep
       (`src/pio/pio_fifo.h`)
 - [x] Flow control: blocking vs non-blocking PUSH/PULL wired into the SM
-- [ ] CPU-facing TXF/RXF register windows + FSTAT/FLEVEL (comes with P2.7)
+- [x] CPU-facing TXF/RXF register windows + FSTAT/FLEVEL (`pio_registers.cpp`;
+      TXF/RXF also latch TXOVER/RXUNDER into FDEBUG, see P2.7)
 - **Tests**: covered by test_pio_sm
 - **Effort**: 20 hours
 - **Priority**: CRITICAL
 - **Dependencies**: P2.1
 
-#### P2.5: Clock Divider & Execution Timing
-- [ ] Divide-by-N logic (1-65536)
-- [ ] Fractional clock divider
-- [ ] Stall detection (when FIFO blocks)
-- [ ] Parallel SM execution
-- **Tests**: 20+ timing tests
+#### P2.5: Clock Divider & Execution Timing  [DONE]
+- [x] Divide-by-N logic (1-65536): `PioBlock::set_clkdiv()` / `clkacc_`
+      (int part 0 means 65536, per datasheet 3.5.5)
+- [x] Fractional clock divider: 16.8 fixed-point (int*256 + frac) in
+      `PioBlock::tick()`
+- [x] Stall detection (when FIFO blocks): `StateMachine::TickOutcome::stalled`
+      (see P2.3/P2.4/P2.7)
+- [x] Parallel SM execution: `PioBlock::tick()` advances all 4 SMs every
+      system clock, each against its own divided clock
+- **Tests**: test_pio_block, test_pio_sm
 - **Effort**: 15 hours
 - **Priority**: CRITICAL (timing is key)
 - **Dependencies**: P2.1, P2.2, P2.3
@@ -273,7 +284,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [ ] Input synchroniser bypass, pin override logic (low priority)
 - **Tests**: test_pio_block
 
-#### P2.7: PIO  CPU Integration  [IN PROGRESS]
+#### P2.7: PIO  CPU Integration  [DONE]
 - [x] `PioRegisters` BusPeripheral @ 0x50200000 / 0x50300000
       (`src/pio/pio_registers.{h,cpp}`)
 - [x] CTRL (SM_ENABLE / SM_RESTART / CLKDIV_RESTART)
@@ -285,18 +296,24 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] INTR (RXNEMPTY / TXNFULL / SM-IRQ 0-3) + IRQ0_INTE/INTF/INTS and
       IRQ1_* routed to NVIC PIO0_IRQ_0/1 (IRQ7/8) and PIO1_IRQ_0/1 (IRQ9/10)
       via `poll_interrupts()`, called each `Simulator::step()`
-- [ ] FDEBUG stall/overflow/underflow bits
+- [x] FDEBUG stall/overflow/underflow bits: RXSTALL/TXSTALL latched per-cycle
+      from `StateMachine::tick()`'s outcome (blocking PUSH/PULL or
+      autopush/autopull against a full/empty FIFO), RXUNDER/TXOVER latched on
+      a CPU-side RXF read of an empty FIFO / TXF write to a full FIFO; all
+      four groups write-1-clear
 - **Tests**: `tests/unit/test_pio_registers.cpp` (11 cases) - incl. a blink
       program configured entirely through MMIO and an SM-IRQ -> NVIC route
 - **Effort**: 20 hours
 - **Dependencies**: P2.1-P2.6
 
-#### P2.8: Auto-Push & Auto-Pull
-- [ ] Auto-push when ISR full
-- [ ] Auto-pull when OSR empty
-- [ ] Configurable thresholds
-- [ ] Edge cases (mid-instruction)
-- **Tests**: 10+ auto-push/pull tests
+#### P2.8: Auto-Push & Auto-Pull  [DONE]
+- [x] Auto-push when ISR full: `StateMachine::maybe_autopush()`
+- [x] Auto-pull when OSR empty: `StateMachine::do_autopull()`
+- [x] Configurable thresholds: `cfg.push_threshold` / `cfg.pull_threshold`
+- [x] Edge cases (mid-instruction): `Stall::AutoPush` / `Stall::AutoPull`
+      resume the stalled IN/OUT after the FIFO unblocks (see P2.3)
+- **Tests**: test_pio_sm ("autopull refills...", "autopull stalls...",
+      "autopush moves...")
 - **Effort**: 10 hours
 - **Priority**: HIGH
 - **Dependencies**: P2.3, P2.4

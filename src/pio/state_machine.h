@@ -37,6 +37,8 @@ struct SmConfig {
     bool sideset_opt = false;         // side-set is optional (extra enable bit)
     bool sideset_pindir = false;      // side-set targets PINDIRS instead of PINS
     std::uint8_t jmp_pin = 0;
+    bool status_sel_rx = false;       // STATUS_SEL: false = TXLEVEL, true = RXLEVEL
+    std::uint8_t status_n = 0;        // STATUS_N: level threshold for MOV x, STATUS
 
     // PINCTRL: base pin + count for each pin group (pins wrap modulo 30).
     std::uint8_t in_base = 0;
@@ -53,6 +55,12 @@ public:
         bool executed = false;  // an instruction retired this tick
         bool stalled = false;   // no forward progress (waiting on a FIFO, etc.)
         bool delayed = false;   // idle in an instruction's delay slot
+        // FDEBUG (datasheet 3.5.4): true whenever this tick is stalled on the
+        // RX/TX FIFO specifically (blocking PUSH/PULL, or autopush/autopull,
+        // against a full/empty FIFO) - not for WAIT/IRQ stalls, which don't
+        // touch FDEBUG. The register block ORs these into its sticky bits.
+        bool rx_stall = false;  // RXSTALL: stalled on a full RX FIFO
+        bool tx_stall = false;  // TXSTALL: stalled on an empty TX FIFO
     };
 
     // Shared 32-word instruction memory of the owning PIO block.

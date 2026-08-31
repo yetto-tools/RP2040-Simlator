@@ -145,6 +145,38 @@ TEST_CASE("PIO IRQ flag routed to the NVIC through IRQ0_INTE") {
     CHECK_FALSE(cpu.is_pending(PioRegisters::kPio0Irq0));
 }
 
+TEST_CASE_FIXTURE(PioRegFix, "FDEBUG: RXSTALL/TXSTALL latch from a blocked PUSH/PULL") {
+    wr(0x048 + 0, 0x8020);                      // push block
+    wr(0x0C8 + 0x04, (0u << 7) | (0u << 12));   // wrap 0..0 (loop on the same instr)
+    wr(0x000, 1u);                              // enable SM0
+
+    for (int i = 0; i < 4; ++i) { block.tick(); regs.poll_fdebug(); }  // fills the 4-deep RX FIFO
+    CHECK((rd(0x008) & (1u << 28)) == 0);       // not stalled yet
+    block.tick(); regs.poll_fdebug();           // 5th push: FIFO full -> stalls
+    CHECK((rd(0x008) & (1u << 28)) != 0);       // RXSTALL (SM0)
+
+    wr(0x008, 1u << 28);                        // write-1-clear
+    CHECK((rd(0x008) & (1u << 28)) == 0);
+
+    // A fresh SM stalled on an empty TX FIFO sets TXSTALL instead.
+    block.sm(0).restart();
+    wr(0x048 + 0, 0x80A0);                      // pull block
+    block.tick(); regs.poll_fdebug();
+    CHECK((rd(0x008) & (1u << 16)) != 0);       // TXSTALL (SM0)
+}
+
+TEST_CASE_FIXTURE(PioRegFix, "FDEBUG: RXUNDER on an empty RXF read, TXOVER on a full TXF write") {
+    rd(0x020);                                  // RXF0 read while empty
+    CHECK((rd(0x008) & (1u << 24)) != 0);       // RXUNDER (SM0)
+    wr(0x008, 1u << 24);
+    CHECK((rd(0x008) & (1u << 24)) == 0);       // write-1-clear
+
+    for (int i = 0; i < 4; ++i) wr(0x010, static_cast<std::uint32_t>(i));  // fill TX0 (depth 4)
+    CHECK((rd(0x008) & (1u << 20)) == 0);       // not yet
+    wr(0x010, 99u);                             // 5th write: FIFO full
+    CHECK((rd(0x008) & (1u << 20)) != 0);       // TXOVER (SM0)
+}
+
 TEST_CASE_FIXTURE(PioRegFix, "a blink program configured entirely through registers") {
     gpio.set_funcsel(25, Gpio::kFuncPio0);
     gpio.driver_set_pindir(Gpio::kPio0, 25, true);
