@@ -12,10 +12,27 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "core/memory.h"
 
 namespace rp2040 {
+
+// One entry of SHT_SYMTAB (ELF-32 spec ch. 1-3, "Symbol Table").
+struct ElfSymbol {
+    std::string name;
+    std::uint32_t value = 0;  // st_value (Thumb bit not stripped, as in the ELF)
+    std::uint32_t size = 0;
+    std::uint8_t type = 0;    // STT_*: 1 = OBJECT, 2 = FUNC, ...
+    std::uint8_t bind = 0;    // STB_*: 0 = LOCAL, 1 = GLOBAL, 2 = WEAK
+};
+
+// One section header (name + load address/size only - not the full Shdr).
+struct ElfSection {
+    std::string name;
+    std::uint32_t addr = 0;   // sh_addr (0 for non-loadable sections, e.g. .symtab)
+    std::uint32_t size = 0;
+};
 
 struct ElfImage {
     bool ok = false;
@@ -24,6 +41,18 @@ struct ElfImage {
     unsigned segments_loaded = 0;
     std::uint32_t lowest_addr = 0;
     std::uint32_t highest_addr = 0;  // one past the last byte written
+
+    // Best-effort: absent (empty) rather than a load failure if the ELF was
+    // stripped, or its section headers are malformed - only the PT_LOAD
+    // segments above are required for correct execution.
+    std::vector<ElfSymbol> symbols;
+    std::vector<ElfSection> sections;
+
+    // The symbol whose [value, value + size) contains `addr` (a FUNC/OBJECT
+    // symbol is preferred over a zero-size one at the same address), or
+    // nullptr if none - for resolving PC to a function name in traces/the
+    // debugger. `addr` is matched with the Thumb bit masked off.
+    const ElfSymbol* symbol_at(std::uint32_t addr) const;
 };
 
 // Parse and load an ELF image held entirely in `data`.

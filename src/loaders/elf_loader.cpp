@@ -1,5 +1,6 @@
 #include "loaders/elf_loader.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -19,14 +20,27 @@ std::uint32_t rd32(const std::uint8_t* p) {
 // ELF-32 header field offsets.
 enum : std::size_t {
     kEIClass = 4, kEIData = 5,
-    kEType = 16, kEMachine = 18, kEEntry = 24, kEPhoff = 28,
-    kEPhentsize = 42, kEPhnum = 44, kElfHeaderSize = 52,
+    kEType = 16, kEMachine = 18, kEEntry = 24, kEPhoff = 28, kEShoff = 32,
+    kEPhentsize = 42, kEPhnum = 44, kEShentsize = 46, kEShnum = 48, kEShstrndx = 50,
+    kElfHeaderSize = 52,
 };
 // Program-header field offsets.
 enum : std::size_t {
     kPType = 0, kPOffset = 4, kPPaddr = 12, kPFilesz = 16, kPMemsz = 20,
     kProgHeaderSize = 32,
 };
+// Section-header field offsets.
+enum : std::size_t {
+    kShName = 0, kShType = 4, kShAddr = 12, kShOffset = 16, kShSize = 20,
+    kShLink = 24, kSectionHeaderSize = 40,
+};
+inline constexpr std::uint32_t kShtSymtab = 2;
+
+// Symbol-table entry field offsets (Elf32_Sym).
+enum : std::size_t {
+    kStName = 0, kStValue = 4, kStSize = 8, kStInfo = 12, kSymEntrySize = 16,
+};
+
 inline constexpr std::uint16_t kEMArm = 40;
 inline constexpr std::uint32_t kPtLoad = 1;
 
@@ -37,7 +51,93 @@ ElfImage fail(const char* msg) {
     return img;
 }
 
+// A NUL-terminated string at `off` in a string table spanning
+// [tab_off, tab_off + tab_size) of `data` (size `size`). "" if out of bounds.
+std::string read_str(const std::uint8_t* data, std::size_t size,
+                      std::uint32_t tab_off, std::uint32_t tab_size, std::uint32_t off) {
+    if (off >= tab_size) return "";
+    const std::uint64_t start = static_cast<std::uint64_t>(tab_off) + off;
+    if (start >= size) return "";
+    const std::uint8_t* p = data + start;
+    const std::uint8_t* end = data + std::min<std::uint64_t>(size, static_cast<std::uint64_t>(tab_off) + tab_size);
+    const std::uint8_t* nul = static_cast<const std::uint8_t*>(std::memchr(p, 0, static_cast<std::size_t>(end - p)));
+    return nul != nullptr ? std::string(reinterpret_cast<const char*>(p), static_cast<std::size_t>(nul - p)) : "";
+}
+
+// Best-effort: section headers + symbol table are not required for
+// execution, so any inconsistency here just leaves img.sections/symbols
+// empty rather than failing the load.
+void load_sections_and_symbols(ElfImage& img, const std::uint8_t* data, std::size_t size) {
+    const std::uint32_t shoff = rd32(data + kEShoff);
+    const std::uint16_t shentsize = rd16(data + kEShentsize);
+    const std::uint16_t shnum = rd16(data + kEShnum);
+    const std::uint16_t shstrndx = rd16(data + kEShstrndx);
+    if (shoff == 0 || shnum == 0 || shentsize < kSectionHeaderSize) return;
+    if (static_cast<std::uint64_t>(shoff) + static_cast<std::uint64_t>(shnum) * shentsize > size) return;
+
+    auto sh = [&](std::uint16_t i) { return data + shoff + static_cast<std::size_t>(i) * shentsize; };
+
+    std::uint32_t shstr_off = 0, shstr_size = 0;
+    if (shstrndx < shnum) {
+        shstr_off = rd32(sh(shstrndx) + kShOffset);
+        shstr_size = rd32(sh(shstrndx) + kShSize);
+    }
+
+    std::uint16_t symtab_idx = shnum;  // shnum == "none found"
+    for (std::uint16_t i = 0; i < shnum; ++i) {
+        const std::uint8_t* s = sh(i);
+        ElfSection sec;
+        sec.name = read_str(data, size, shstr_off, shstr_size, rd32(s + kShName));
+        sec.addr = rd32(s + kShAddr);
+        sec.size = rd32(s + kShSize);
+        img.sections.push_back(std::move(sec));
+        if (rd32(s + kShType) == kShtSymtab && symtab_idx == shnum) symtab_idx = i;
+    }
+    if (symtab_idx == shnum) return;  // no SHT_SYMTAB
+
+    const std::uint8_t* symtab = sh(symtab_idx);
+    const std::uint32_t sym_off = rd32(symtab + kShOffset);
+    const std::uint32_t sym_size = rd32(symtab + kShSize);
+    const std::uint32_t strtab_idx = rd32(symtab + kShLink);
+    if (strtab_idx >= shnum) return;
+    const std::uint32_t str_off = rd32(sh(static_cast<std::uint16_t>(strtab_idx)) + kShOffset);
+    const std::uint32_t str_size = rd32(sh(static_cast<std::uint16_t>(strtab_idx)) + kShSize);
+    if (static_cast<std::uint64_t>(sym_off) + sym_size > size) return;
+
+    const std::uint32_t count = sym_size / kSymEntrySize;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        const std::uint8_t* e = data + sym_off + static_cast<std::size_t>(i) * kSymEntrySize;
+        ElfSymbol sym;
+        sym.name = read_str(data, size, str_off, str_size, rd32(e + kStName));
+        if (sym.name.empty()) continue;  // e.g. the mandatory null entry 0
+        sym.value = rd32(e + kStValue);
+        sym.size = rd32(e + kStSize);
+        const std::uint8_t info = e[kStInfo];
+        sym.bind = static_cast<std::uint8_t>(info >> 4);
+        sym.type = static_cast<std::uint8_t>(info & 0xFu);
+        img.symbols.push_back(std::move(sym));
+    }
+}
+
 }  // namespace
+
+const ElfSymbol* ElfImage::symbol_at(std::uint32_t addr) const {
+    addr &= ~std::uint32_t{1};  // Thumb bit
+    const ElfSymbol* best = nullptr;
+    std::uint32_t best_span = 0;
+    for (const ElfSymbol& s : symbols) {
+        const std::uint32_t value = s.value & ~std::uint32_t{1};
+        const std::uint32_t span = s.size == 0 ? 1u : s.size;
+        if (addr < value || addr - value >= span) continue;
+        // Prefer a sized symbol over a size-0 marker, then the tightest
+        // enclosing span (e.g. a FUNC over a whole section's worth of range).
+        const bool better = best == nullptr ||
+                             (s.size > 0 && best->size == 0) ||
+                             (s.size > 0 && best->size > 0 && span < best_span);
+        if (better) { best = &s; best_span = span; }
+    }
+    return best;
+}
 
 ElfImage load_elf(Memory& mem, const std::uint8_t* data, std::size_t size) {
     if (data == nullptr || size < kElfHeaderSize) return fail("file too small for an ELF header");
@@ -92,6 +192,7 @@ ElfImage load_elf(Memory& mem, const std::uint8_t* data, std::size_t size) {
     }
 
     if (img.segments_loaded == 0) return fail("no PT_LOAD segments");
+    load_sections_and_symbols(img, data, size);
     img.ok = true;
     return img;
 }

@@ -685,16 +685,25 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 7: Loaders & Debugging (Week 10)
 
-#### P7.1: ELF Loader  [IN PROGRESS - pulled forward for CPU validation]
+#### P7.1: ELF Loader  [DONE - pulled forward for CPU validation]
 - [x] Parse + validate ELF32 header (magic, ELFCLASS32, LSB, ET_EXEC/DYN, EM_ARM)
 - [x] Read program headers, load PT_LOAD segments at p_paddr (LMA) via backdoor
 - [x] Zero-fill the BSS tail (p_memsz > p_filesz); bounds-check every range
 - [x] Entry point (e_entry) reported; lowest/highest loaded address
 - [x] `load_elf_file()` convenience; CLI `rp2040-sim <firmware.elf>` driver
-- [ ] Symbol table / section names (for the debugger / traces)
+- [x] Symbol table / section names (for the debugger / traces): parses
+      SHT_SYMTAB + its linked SHT_STRTAB and every section header's name
+      into `ElfImage::symbols`/`sections`; `symbol_at(addr)` resolves a PC to
+      the tightest enclosing symbol (Thumb bit masked). Best-effort: absent
+      rather than a load failure if the ELF is stripped or the section
+      headers are malformed, since only PT_LOAD is required for execution.
+      Caught a real off-by-Thumb-bit bug in the validating test itself (not
+      in symbol_at()) by exercising it against the real GCC/ld-built sum.elf
+      fixture rather than only synthetic ELFs.
 - **Tests**: `tests/unit/test_elf_loader.cpp` (synthetic ELFs) +
       `tests/integration/test_firmware.cpp` (real arm-none-eabi-gcc -O2 image
-      built by CMake, run end-to-end through the simulator)
+      built by CMake, run end-to-end through the simulator, incl. a symbol
+      table / section name check against real linker output)
 - **Effort**: 15 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3
@@ -754,9 +763,6 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Tests**: `tests/unit/test_gdb_stub.cpp` (7 cases)
 - **Design**: GDB RSP spec; ARM m-profile register layout
 - **Files**: `src/debuggers/gdb_stub.{h,cpp}`, `src/main.cpp`
-  - [ ] $Z0 (remove software)
-- [ ] Watchpoint support (optional)
-- **Tests**: 25+ GDB scenarios
 - **Effort**: 30 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1, P1.3

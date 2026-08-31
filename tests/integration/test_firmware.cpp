@@ -89,6 +89,41 @@ TEST_CASE("sum.elf: optimised GCC output runs to its result") {
     CHECK(cpu.cycle_count() > 0);
 }
 
+TEST_CASE("sum.elf: real GCC/ld symbol table and section names parse correctly") {
+    Memory mem;
+    const ElfImage img = load_elf_file(mem, RP2040_FIRMWARE_SUM_ELF);
+    REQUIRE_MESSAGE(img.ok, img.error);
+    REQUIRE_FALSE(img.symbols.empty());
+    REQUIRE_FALSE(img.sections.empty());
+
+    const ElfSymbol* sum_to = nullptr;
+    const ElfSymbol* g_result = nullptr;
+    for (const ElfSymbol& s : img.symbols) {
+        if (s.name == "sum_to") sum_to = &s;
+        if (s.name == "g_result") g_result = &s;
+    }
+    REQUIRE(sum_to != nullptr);
+    CHECK(sum_to->type == 2u);   // STT_FUNC
+    CHECK(sum_to->size > 0u);
+    // symbol_at() finds it back from any address inside its range. Thumb-bit
+    // masked before the arithmetic: sum_to->value is odd (Thumb function),
+    // so "value + size - 1" without masking would overshoot into the next
+    // symbol's range instead of landing on sum_to's real last byte.
+    const std::uint32_t sum_to_start = sum_to->value & ~std::uint32_t{1};
+    CHECK(img.symbol_at(sum_to->value) == sum_to);
+    CHECK(img.symbol_at(sum_to_start + sum_to->size - 1u) == sum_to);
+
+    REQUIRE(g_result != nullptr);
+    CHECK(g_result->type == 1u);  // STT_OBJECT
+    CHECK((g_result->value >= kSramBase && g_result->value < kSramBase + kSramSize));
+
+    bool has_bss = false;
+    for (const ElfSection& sec : img.sections) {
+        if (sec.name == ".bss") has_bss = true;
+    }
+    CHECK(has_bss);
+}
+
 TEST_CASE("sum.elf repackaged as UF2 loads and runs identically") {
     // Load the real ELF once to discover its byte image, then round-trip that
     // image through the UF2 container and run it on a fresh machine.
