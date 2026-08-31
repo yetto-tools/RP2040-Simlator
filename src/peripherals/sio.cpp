@@ -65,7 +65,7 @@ BusResult<std::uint32_t> Sio::bus_read(std::uint32_t offset, BusWidth) {
     }
     switch (offset) {
         case kCPUID:     return {active_, BusStatus::Ok};
-        case kGPIO_IN:    return {gpio_.input_bits(), BusStatus::Ok};
+        case kGPIO_IN:    return {gpio_.func_input_bits(), BusStatus::Ok};
         case kGPIO_HI_IN: return {0u, BusStatus::Ok};
         case kGPIO_OUT:   return {gpio_.driver_out(Gpio::kSio), BusStatus::Ok};
         case kGPIO_OE:    return {gpio_.driver_oe(Gpio::kSio), BusStatus::Ok};

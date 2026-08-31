@@ -71,7 +71,7 @@ std::uint32_t StateMachine::read_pins(std::uint8_t base, unsigned count) const {
     if (gpio_ == nullptr) return 0;
     for (unsigned i = 0; i < count; ++i) {
         const unsigned pin = wrap_pin(base + i);
-        if (gpio_->level(pin)) v |= (1u << i);
+        if (gpio_->func_level(pin)) v |= (1u << i);
     }
     return v;
 }
@@ -115,7 +115,7 @@ bool StateMachine::exec(const PioInstr& in) {
                 case kJmpNotY:    take = (y == 0); break;
                 case kJmpYDec:    take = (y != 0); y = y - 1; break;
                 case kJmpXNeY:    take = (x != y); break;
-                case kJmpPin:    take = (gpio_ != nullptr) && gpio_->level(cfg.jmp_pin); break;
+                case kJmpPin:    take = (gpio_ != nullptr) && gpio_->func_level(cfg.jmp_pin); break;
                 case kJmpNotOsrE: take = (osr_shift_count < pull_thresh()); break;
                 default: break;
             }
@@ -270,11 +270,11 @@ bool StateMachine::exec(const PioInstr& in) {
             switch (in.source) {
                 case kWaitGpio:
                     satisfied = (gpio_ != nullptr) &&
-                                (gpio_->level(wrap_pin(in.index)) == in.polarity);
+                                (gpio_->func_level(wrap_pin(in.index)) == in.polarity);
                     break;
                 case kWaitPin:
                     satisfied = (gpio_ != nullptr) &&
-                                (gpio_->level(wrap_pin(static_cast<unsigned>(cfg.in_base) + in.index)) == in.polarity);
+                                (gpio_->func_level(wrap_pin(static_cast<unsigned>(cfg.in_base) + in.index)) == in.polarity);
                     break;
                 case kWaitIrq: {
                     wait_irq = resolve_irq(in.index);

@@ -314,8 +314,11 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] IO_BANK0 (`src/peripherals/iobank0.{h,cpp}`) @ 0x40014000: GPIOx_CTRL
       FUNCSEL, GPIOx_STATUS level bits
 - [x] PADS_BANK0 register window (pulls -> Gpio; drive/schmitt stored) -- see P3.1b
+- [x] GPIOx_CTRL OUTOVER / OEOVER / INOVER / IRQOVER (2-bit normal/invert/
+      low/high): OUTOVER/OEOVER force the pad; INOVER feeds PIO/SIO inputs
+      (`Gpio::func_level`); IRQOVER feeds the IO_BANK0 edge detector
 - [ ] Slew / drive strength / glitch filter (behavioural, low priority)
-- **Tests**: `tests/unit/test_gpio.cpp` (7 cases)
+- **Tests**: `tests/unit/test_gpio.cpp` (9 cases)
 - **Effort**: 25 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.3

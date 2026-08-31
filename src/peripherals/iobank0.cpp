@@ -31,7 +31,7 @@ std::uint32_t all_edge_mask() {
 void IoBank0::poll() {
     std::uint32_t level = 0;
     for (unsigned p = 0; p < Gpio::kNumPins; ++p) {
-        if (gpio_.level(p)) level |= (1u << p);
+        if (gpio_.irq_level(p)) level |= (1u << p);   // IRQOVER applied
     }
     const std::uint32_t rising  = primed_ ? (level & ~prev_level_) : 0u;
     const std::uint32_t falling = primed_ ? (~level & prev_level_) : 0u;
@@ -108,6 +108,11 @@ BusStatus IoBank0::reg_write(std::uint32_t offset, std::uint32_t value, BusWidth
         const unsigned pin = offset / 8u;
         ctrl_[pin] = value;
         gpio_.set_funcsel(pin, static_cast<std::uint8_t>(value & 0x1Fu));
+        gpio_.set_overrides(pin,
+                            static_cast<std::uint8_t>((value >> 8) & 0x3u),    // OUTOVER
+                            static_cast<std::uint8_t>((value >> 12) & 0x3u),   // OEOVER
+                            static_cast<std::uint8_t>((value >> 16) & 0x3u),   // INOVER
+                            static_cast<std::uint8_t>((value >> 30) & 0x3u));  // IRQOVER
         return BusStatus::Ok;
     }
 

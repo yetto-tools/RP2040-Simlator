@@ -110,6 +110,38 @@ TEST_CASE_FIXTURE(GpioFix, "IO_BANK0 atomic SET / CLR aliases work on GPIOx_CTRL
     CHECK((rd(ctrl) & 0x1Fu) == Gpio::kFuncSio);
 }
 
+TEST_CASE_FIXTURE(GpioFix, "GPIOx_CTRL OUTOVER / OEOVER force the pad") {
+    funcsel(6, Gpio::kFuncSio);
+    const std::uint32_t ctrl = IoBank0::kBase + 8u * 6u + 4u;
+
+    // SIO drives pin 6 low, output-enabled.
+    wr(Sio::kBase + 0x020, 1u << 6);   // GPIO_OE = pin 6 (GPIO_OUT stays 0)
+    CHECK_FALSE(gpio.pad_level(6));
+
+    // OUTOVER = force high (3) at bits [9:8].
+    wr(ctrl, Gpio::kFuncSio | (0x3u << 8));
+    CHECK(gpio.pad_level(6));
+    CHECK(gpio.level(6));
+
+    // OUTOVER = invert (1): follows !func_out, which is !0 == 1.
+    wr(ctrl, Gpio::kFuncSio | (0x1u << 8));
+    CHECK(gpio.pad_level(6));
+
+    // OEOVER = force low (2) at [13:12]: pad stops driving.
+    wr(ctrl, Gpio::kFuncSio | (0x1u << 8) | (0x2u << 12));
+    CHECK_FALSE(gpio.pad_driving(6));
+}
+
+TEST_CASE_FIXTURE(GpioFix, "INOVER inverts the value a peripheral reads via SIO GPIO_IN") {
+    funcsel(7, Gpio::kFuncSio);
+    gpio.set_external(7, true);
+    CHECK((rd(Sio::kBase + 0x004) & (1u << 7)) != 0);   // GPIO_IN raw
+
+    wr(IoBank0::kBase + 8u * 7u + 4u, Gpio::kFuncSio | (0x1u << 16));  // INOVER = invert
+    CHECK((rd(Sio::kBase + 0x004) & (1u << 7)) == 0);
+    CHECK(gpio.level(7));                               // raw pin level unchanged
+}
+
 TEST_CASE_FIXTURE(GpioFix, "GPIOx_CTRL reads back and STATUS shows levels") {
     funcsel(2, Gpio::kFuncSio);
     CHECK((rd(IoBank0::kBase + 8u * 2u + 4u) & 0x1Fu) == Gpio::kFuncSio);

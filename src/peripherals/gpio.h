@@ -43,18 +43,30 @@ public:
     // --- pad pulls --------------------------------------------------------
     void set_pulls(unsigned pin, bool pull_up, bool pull_down);
 
+    // --- GPIOx_CTRL overrides (datasheet 2.19.6.1) ----------------------
+    // Each is a 2-bit selector: 0 = normal, 1 = invert, 2 = force low,
+    // 3 = force high.
+    enum Override : std::uint8_t { kOverNormal = 0, kOverInvert = 1, kOverLow = 2, kOverHigh = 3 };
+    void set_overrides(unsigned pin, std::uint8_t out_over, std::uint8_t oe_over,
+                       std::uint8_t in_over, std::uint8_t irq_over);
+
     // --- external stimulus (test bench / attached device) ---------------
     void set_external(unsigned pin, bool level);
     void clear_external(unsigned pin);          // pin goes hi-Z, pulls decide
 
     // --- effective values ----------------------------------------------
-    bool pad_driving(unsigned pin) const;       // is the pad actively driving?
-    bool pad_level(unsigned pin) const;         // value the pad drives (if driving)
-    bool level(unsigned pin) const;             // value any input sees
-    std::uint32_t input_bits() const;           // all pins as a bit vector
+    bool pad_driving(unsigned pin) const;       // is the pad actively driving? (OEOVER applied)
+    bool pad_level(unsigned pin) const;         // value the pad drives (OUTOVER applied)
+    bool level(unsigned pin) const;             // raw value at the pin
+    bool func_level(unsigned pin) const;        // value a peripheral input sees (INOVER applied)
+    bool irq_level(unsigned pin) const;         // value the IO_BANK0 IRQ block sees (IRQOVER)
+    std::uint32_t input_bits() const;           // all pins as a bit vector (raw)
+    std::uint32_t func_input_bits() const;      // all pins, INOVER applied (SIO GPIO_IN)
 
 private:
     int driver_index(unsigned pin) const;      // -1 if no modelled function
+
+    static bool apply_override(std::uint8_t sel, bool value);
 
     struct Pin {
         std::uint8_t funcsel = kFuncNull;
@@ -62,6 +74,10 @@ private:
         bool pull_down = false;
         bool ext_driven = false;
         bool ext_level = false;
+        std::uint8_t out_over = 0;
+        std::uint8_t oe_over = 0;
+        std::uint8_t in_over = 0;
+        std::uint8_t irq_over = 0;
     };
     std::array<Pin, kNumPins> pins_{};
     std::array<std::uint32_t, kNumDrivers> out_{};

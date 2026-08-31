@@ -39,6 +39,24 @@ void Gpio::set_pulls(unsigned pin, bool pull_up, bool pull_down) {
     pins_[pin].pull_down = pull_down;
 }
 
+void Gpio::set_overrides(unsigned pin, std::uint8_t out_over, std::uint8_t oe_over,
+                         std::uint8_t in_over, std::uint8_t irq_over) {
+    if (pin >= kNumPins) return;
+    pins_[pin].out_over = out_over & 0x3u;
+    pins_[pin].oe_over = oe_over & 0x3u;
+    pins_[pin].in_over = in_over & 0x3u;
+    pins_[pin].irq_over = irq_over & 0x3u;
+}
+
+bool Gpio::apply_override(std::uint8_t sel, bool value) {
+    switch (sel & 0x3u) {
+        case kOverInvert: return !value;
+        case kOverLow:    return false;
+        case kOverHigh:   return true;
+        default:          return value;
+    }
+}
+
 void Gpio::set_external(unsigned pin, bool level) {
     if (pin >= kNumPins) return;
     pins_[pin].ext_driven = true;
@@ -50,13 +68,17 @@ void Gpio::clear_external(unsigned pin) {
 }
 
 bool Gpio::pad_driving(unsigned pin) const {
+    if (pin >= kNumPins) return false;
     const int d = driver_index(pin);
-    return d >= 0 && ((oe_[static_cast<unsigned>(d)] >> pin) & 1u) != 0;
+    const bool func_oe = d >= 0 && ((oe_[static_cast<unsigned>(d)] >> pin) & 1u) != 0;
+    return apply_override(pins_[pin].oe_over, func_oe);
 }
 
 bool Gpio::pad_level(unsigned pin) const {
+    if (pin >= kNumPins) return false;
     const int d = driver_index(pin);
-    return d >= 0 && ((out_[static_cast<unsigned>(d)] >> pin) & 1u) != 0;
+    const bool func_out = d >= 0 && ((out_[static_cast<unsigned>(d)] >> pin) & 1u) != 0;
+    return apply_override(pins_[pin].out_over, func_out);
 }
 
 bool Gpio::level(unsigned pin) const {
@@ -69,10 +91,28 @@ bool Gpio::level(unsigned pin) const {
     return false;  // floating input modelled as 0
 }
 
+bool Gpio::func_level(unsigned pin) const {
+    if (pin >= kNumPins) return false;
+    return apply_override(pins_[pin].in_over, level(pin));
+}
+
+bool Gpio::irq_level(unsigned pin) const {
+    if (pin >= kNumPins) return false;
+    return apply_override(pins_[pin].irq_over, level(pin));
+}
+
 std::uint32_t Gpio::input_bits() const {
     std::uint32_t v = 0;
     for (unsigned pin = 0; pin < kNumPins; ++pin) {
         if (level(pin)) v |= (1u << pin);
+    }
+    return v;
+}
+
+std::uint32_t Gpio::func_input_bits() const {
+    std::uint32_t v = 0;
+    for (unsigned pin = 0; pin < kNumPins; ++pin) {
+        if (func_level(pin)) v |= (1u << pin);
     }
     return v;
 }

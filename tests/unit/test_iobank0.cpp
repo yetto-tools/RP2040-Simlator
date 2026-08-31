@@ -67,6 +67,19 @@ TEST_CASE_FIXTURE(Fix, "an enabled edge pends IO_IRQ_BANK0 on the right core onl
     CHECK_FALSE(c0.is_pending(IoBank0::kIrqBank0));
 }
 
+TEST_CASE_FIXTURE(Fix, "GPIOx_CTRL.IRQOVER inverts the edge-detect input") {
+    // IRQOVER = invert on pin 3 (bits [31:30] of GPIO3_CTRL at offset 3*8 + 4).
+    wr(3u * 8u + 4u, Gpio::kFuncSio | (0x1u << 30));
+    io.poll();                                        // prime (pin low -> IRQ sees high)
+
+    gpio.set_external(3, true);                       // pin goes high...
+    io.poll();
+    // ...but with IRQOVER=invert the IRQ block sees a *falling* edge.
+    CHECK((rd(0xF0) & (1u << 14)) != 0);              // EDGE_LOW latched
+    CHECK((rd(0xF0) & (1u << 15)) == 0);              // not EDGE_HIGH
+    CHECK((rd(0xF0) & (1u << 12)) != 0);              // LEVEL_LOW (inverted)
+}
+
 TEST_CASE_FIXTURE(Fix, "PROC1_INTF force raises the interrupt on core 1") {
     io.poll();
     wr(0x130, 1u << 1);    // PROC1_INTE0: pin 0 LEVEL_HIGH
