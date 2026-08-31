@@ -35,6 +35,9 @@ public:
     void on_cycles(std::uint64_t sys_cycles);
     std::uint64_t now_us() const { return counter_; }
 
+    // System clocks per 1 us tick (pushed by the clock tree).
+    void set_cycles_per_us(std::uint32_t c) { cycles_per_us_ = c == 0 ? 1u : c; }
+
     // Wire the second Cortex-M0+ core so its NVIC also sees TIMER_IRQ_0..3.
     void connect_core1(Cpu* core1) { nvic_.connect(core1); }
 

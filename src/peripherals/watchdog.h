@@ -31,6 +31,12 @@ public:
 
     void on_cycles(std::uint64_t sys_cycles);
 
+    // System clocks per 1 us tick. The clock tree pushes this (it derives from
+    // WATCHDOG_TICK.CYCLES and the clk_ref / clk_sys ratio).
+    void set_cycles_per_us(std::uint32_t c) { cycles_per_us_ = c == 0 ? 1u : c; }
+    // WATCHDOG_TICK.CYCLES [8:0] - the clk_ref divisor firmware programmed.
+    std::uint32_t tick_cycles() const { return tick_ & 0x1FFu; }
+
     std::uint32_t scratch(unsigned n) const { return scratch_[n & 0x7u]; }
     std::uint32_t reason() const { return reason_; }
 

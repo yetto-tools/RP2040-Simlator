@@ -182,9 +182,16 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Cortex-M0+ instruction timing table (`src/core/timing.{h,cpp}`):
       1-cyc ALU, 2-cyc load/store, 1+N for LDM/STM/PUSH/POP, 4+N POP{PC},
       3-cyc taken branch / BX, 4-cyc BL, single-cycle MUL, 4-cyc MRS/MSR
-- [ ] CPU clock source config (125 MHz default) + wall-clock conversion
+- [x] Clock-tree pacing: `ClockTree` (`src/peripherals/clock_tree.{h,cpp}`)
+      resolves the CLOCKS generators (SRC / AUXSRC muxes + int/frac dividers) +
+      the PLLs + XOSC/ROSC into real Hz; `Simulator::step()` pushes the derived
+      clk_sys / clk_adc / clk_rtc and the WATCHDOG_TICK-scaled microsecond tick
+      into TIMER / WATCHDOG / ADC / RTC whenever the config changes. Falls back
+      to the pico-sdk defaults (125 / 48 MHz / 46875 Hz) until `clocks_init`
+      writes a generator.
 - [ ] Bus wait states (flash XIP latency, SRAM bank contention)
-- **Tests**: `tests/unit/test_timing.cpp` (8 cases)
+- **Tests**: `tests/unit/test_timing.cpp` (8 cases),
+      `tests/unit/test_clock_tree.cpp` (6 cases)
 - **Effort**: 10 hours
 - **Priority**: HIGH
 - **Dependencies**: P1.1
@@ -525,7 +532,7 @@ Week 12:    PHASE 9 - Documentation & Release
 
 ### PHASE 6: Clock Manager (Week 9)
 
-#### P6.0: Minimal clock tree (boot passthrough)  [IN PROGRESS]
+#### P6.0: Clock tree  [DONE]
 - [x] `Xosc` @ 0x40024000: CTRL, STATUS.STABLE/ENABLED once ENABLE = 0xFAB
 - [x] `Rosc` @ 0x40060000: boots enabled + STABLE (RP2040 runs from ROSC at
       reset), STATUS.ENABLED/DIV_RUNNING/STABLE track CTRL.ENABLE, FREQA/FREQB
@@ -535,10 +542,12 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] `Clocks` @ 0x40008000: 10 generators x CTRL/DIV; SELECTED one-hot of
       CTRL.SRC so `clock_configure()` does not spin
 - [x] All on `AtomicPeripheral`; wired into the Simulator
-- [ ] Actually derive `Cpu` / peripheral tick rates from the configured tree
-      (today everything assumes a fixed 125 MHz)
-- **Tests**: `tests/unit/test_clocks.cpp` (7 cases)
-- **Files**: `src/peripherals/clocks.{h,cpp}`
+- [x] `ClockTree` derives real clk_sys / clk_peri / clk_adc / clk_rtc from the
+      generator muxes + dividers + PLLs, and the microsecond tick from
+      WATCHDOG_TICK.CYCLES; `Simulator` pushes these into TIMER/WATCHDOG/ADC/RTC
+      (see P1.5). CPU/PIO already run at clk_sys by construction.
+- **Tests**: `tests/unit/test_clocks.cpp` (10), `tests/unit/test_clock_tree.cpp` (6)
+- **Files**: `src/peripherals/clocks.{h,cpp}`, `src/peripherals/clock_tree.{h,cpp}`
 - **Design**: RP2040 datasheet 2.15-2.18
 
 #### P6.1: Oscillators & PLL (accurate)
@@ -547,8 +556,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] CPU/USB PLL FBDIV + POSTDIV1/POSTDIV2 -> `Pll::output_hz(ref)`
       (VCO = ref*FBDIV, out = VCO/(PD1*PD2)); 0 unless locked. pico-sdk's
       125 MHz recipe (FBDIV 125, /6, /2 from 12 MHz) verified
-- [ ] Feed the derived clk_sys into peripheral pacing (today fixed 125 MHz;
-      pico-sdk always configures exactly this, so low priority)
+- [x] Feed the derived clk_sys into peripheral pacing (`ClockTree`, see P6.0)
 - [ ] CPU PLL
   - [ ] Feedback divider (FBDIV)
   - [ ] Post-dividers (POSTDIV1, POSTDIV2)

@@ -34,6 +34,12 @@ public:
 
     void on_cycles(std::uint64_t sys_cycles);
 
+    // clk_rtc (post-CLKDIV) and clk_sys in Hz (pushed by the clock tree).
+    void set_clock_hz(std::uint32_t rtc_hz, std::uint32_t sys_hz) {
+        rtc_hz_ = rtc_hz == 0 ? 1u : rtc_hz;
+        sys_hz_ = sys_hz == 0 ? 1u : sys_hz;
+    }
+
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 

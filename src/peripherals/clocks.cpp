@@ -171,8 +171,8 @@ BusStatus Clocks::reg_write(std::uint32_t reg, std::uint32_t value, BusWidth) {
     if (reg < kNumGenerators * kGenStride) {
         const unsigned g = reg / kGenStride;
         switch (reg % kGenStride) {
-            case 0x00: gen_[g].ctrl = value; break;
-            case 0x04: gen_[g].div = value; break;
+            case 0x00: gen_[g].ctrl = value; configured_ |= (1u << g); break;
+            case 0x04: gen_[g].div = value; configured_ |= (1u << g); break;
             default: break;  // SELECTED is read-only
         }
     }

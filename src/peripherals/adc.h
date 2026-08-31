@@ -42,6 +42,12 @@ public:
 
     void on_cycles(std::uint64_t sys_cycles);
 
+    // clk_adc and clk_sys in Hz (pushed by the clock tree).
+    void set_clock_hz(std::uint32_t adc_hz, std::uint32_t sys_hz) {
+        adc_hz_ = adc_hz == 0 ? 1u : adc_hz;
+        sys_hz_ = sys_hz == 0 ? 1u : sys_hz;
+    }
+
     std::uint16_t result() const { return result_; }
     unsigned fifo_level() const { return static_cast<unsigned>(fifo_.size()); }
 

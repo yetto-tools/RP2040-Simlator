@@ -112,7 +112,22 @@ ElfImage Simulator::load(const std::string& path, bool from_entry) {
     return img;
 }
 
+void Simulator::sync_clock_pacing() {
+    const std::uint32_t sig = clock_tree_.signature();
+    if (sig == clock_sig_) return;
+    clock_sig_ = sig;
+
+    const std::uint32_t us_cyc = clock_tree_.timer_us_cycles();
+    timer_.set_cycles_per_us(us_cyc);
+    watchdog_.set_cycles_per_us(us_cyc);
+
+    const auto sys_hz = static_cast<std::uint32_t>(clock_tree_.clk_sys_hz());
+    adc_.set_clock_hz(static_cast<std::uint32_t>(clock_tree_.clk_adc_hz()), sys_hz);
+    rtc_.set_clock_hz(static_cast<std::uint32_t>(clock_tree_.clk_rtc_hz()), sys_hz);
+}
+
 ExecStatus Simulator::step() {
+    sync_clock_pacing();
     sio_.set_active_core(0);
     scs_.set_active_core(0);
     const std::uint64_t before = cpu_.cycle_count();

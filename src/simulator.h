@@ -18,6 +18,7 @@
 #include "peripherals/adc.h"
 #include "peripherals/rtc.h"
 #include "peripherals/clocks.h"
+#include "peripherals/clock_tree.h"
 #include "peripherals/resets.h"
 #include "peripherals/sysinfo.h"
 #include "peripherals/watchdog.h"
@@ -62,6 +63,10 @@ public:
     // Execute one instruction and tick the PIO blocks by the cycles it cost.
     ExecStatus step();
 
+    // Derived clk_sys / clk_adc / clk_rtc / us-tick, from whatever the clock
+    // tree resolves to right now (125 MHz until firmware runs clocks_init).
+    std::uint64_t clk_sys_hz() { return clock_tree_.clk_sys_hz(); }
+
     // step() until a self-branch, a non-Ok status, or `max_instructions`.
     RunResult run(std::uint64_t max_instructions = 10'000'000);
 
@@ -87,6 +92,8 @@ public:
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
+    void sync_clock_pacing();  // push the derived clock rates when they change
+
     RegisterFile regs_;
     RegisterFile regs1_;
     Memory mem_;
@@ -117,6 +124,8 @@ private:
     Pll pll_sys_{Pll::kSysBase};
     Pll pll_usb_{Pll::kUsbBase};
     Clocks clocks_;
+    ClockTree clock_tree_{xosc_, rosc_, pll_sys_, pll_usb_, clocks_, watchdog_};
+    std::uint32_t clock_sig_ = 0xFFFFFFFFu;  // forces a first push
     PioBlock pio0_{gpio_, 0};
     PioBlock pio1_{gpio_, 1};
     PioRegisters pio0_regs_{pio0_, PioRegisters::kPio0Base};

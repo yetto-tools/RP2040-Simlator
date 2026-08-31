@@ -959,9 +959,22 @@ Modelled peripherals (functional, not cycle-exact for the analog parts):
 `XOSC` and `ROSC` report STABLE/ENABLED once their enable magic is written
 (ROSC boots enabled - the RP2040 runs from it out of reset); `Pll::output_hz`
 computes the formula above from the FBDIV / POSTDIV register fields and
-returns 0 unless the PLL is locked. The simulator's timing base is still a
-fixed 125 MHz clk_sys - `Pll::output_hz` is not yet fed back into the
-peripheral pacing (pico-sdk always configures exactly this recipe).
+returns 0 unless the PLL is locked.
+
+`ClockTree` (`src/peripherals/clock_tree.{h,cpp}`) resolves the ten CLOCKS
+generators into concrete Hz: each generator's `CTRL.SRC` (glitchless mux) and
+`CTRL.AUXSRC` select a source (a PLL, XOSC, ROSC, or another generator) and
+its `DIV` register applies an int + 1/256 fractional divide. Until firmware
+writes a generator's CTRL it returns the pico-sdk steady-state default
+(clk_sys 125 MHz, clk_adc 48 MHz, clk_rtc 46875 Hz), so bare-metal images
+that never call `clocks_init` keep the fixed-125 MHz behaviour.
+
+`Simulator::step()` re-pushes the derived `clk_sys` / `clk_adc` / `clk_rtc`
+and the microsecond-tick length (`WATCHDOG_TICK.CYCLES * clk_sys / clk_ref`)
+into TIMER, WATCHDOG, ADC and RTC whenever the clock configuration changes
+(guarded by a cheap `signature()`). The CPU and PIO already advance at
+`clk_sys` by construction (one `step()` == one `clk_sys` cycle for cycle
+accounting).
 
 ### 6.2 Clock Configuration
 
