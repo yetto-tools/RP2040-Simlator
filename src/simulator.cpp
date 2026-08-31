@@ -29,6 +29,7 @@ Simulator::Simulator() {
     i2c1_.attach(mem_);
     resets_.attach(mem_);
     sysinfo_.attach(mem_);
+    usb_.attach(mem_);
     watchdog_.attach(mem_);
     pads_.attach(mem_);
     rtc_.attach(mem_);
@@ -66,6 +67,7 @@ Simulator::Simulator() {
     i2c0_.connect_core1(&cpu1_);
     i2c1_.connect_core1(&cpu1_);
     rtc_.connect_core1(&cpu1_);
+    usb_.connect_core1(&cpu1_);
     pio0_regs_.connect_core1(&cpu1_);
     pio1_regs_.connect_core1(&cpu1_);
 

@@ -32,6 +32,7 @@
 #include "peripherals/spi.h"
 #include "peripherals/timer.h"
 #include "peripherals/uart.h"
+#include "peripherals/usb.h"
 #include "pio/pio_block.h"
 #include "pio/pio_registers.h"
 #include "rp2040.h"
@@ -89,6 +90,7 @@ public:
     I2c& i2c(unsigned n) { return n == 0 ? i2c0_ : i2c1_; }
     Watchdog& watchdog() { return watchdog_; }
     Rtc& rtc() { return rtc_; }
+    UsbCtrl& usb() { return usb_; }
     PioBlock& pio(unsigned block) { return block == 0 ? pio0_ : pio1_; }
 
 private:
@@ -116,6 +118,7 @@ private:
     I2c i2c1_{cpu_, I2c::kI2c1Base, I2c::kI2c1Irq};
     Resets resets_;
     Sysinfo sysinfo_;
+    UsbCtrl usb_{cpu_};
     Watchdog watchdog_;
     PadsBank0 pads_{gpio_};
     Rtc rtc_{cpu_};

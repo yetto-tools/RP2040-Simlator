@@ -267,7 +267,7 @@ simulator; the rest are decoded as unmapped register space.
 | 0x40064000 | VREG_AND_CHIP_RESET | no | |
 | 0x4006C000 | TBMAN | no | |
 | **0x50000000** | **DMA** | yes | 12 channels, DREQ pacing; -> IRQ11 / IRQ12 |
-| 0x50100000 / 0x50110000 | USBCTRL_DPRAM / _REGS | no | USB device/host |
+| **0x50100000 / 0x50110000** | **USBCTRL_DPRAM / _REGS** | yes | device controller, EP0 only (§4.9); -> IRQ5 |
 | **0x50200000 / 0x50300000** | **PIO0 / PIO1** | yes | 4 SMs each; -> IRQ7..10 |
 | 0x50400000 | XIP_AUX | no | |
 | **0xD0000000** | **SIO** | yes | CPUID, GPIO, inter-core FIFO, 32 spinlocks |
@@ -847,8 +847,25 @@ struct NVIC {
 ```
 
 See §5.3 for the per-core NVIC model. RP2040 IRQ numbers used by the
-simulator: TIMER 0-3, PWM 4, PIO0 7-8, PIO1 9-10, DMA 11-12, IO_BANK0 13,
-SIO_PROC0/1 15-16, SPI0/1 18-19, UART0/1 20-21, ADC 22, I2C0/1 23-24, RTC 25.
+simulator: TIMER 0-3, PWM 4, USBCTRL 5, PIO0 7-8, PIO1 9-10, DMA 11-12,
+IO_BANK0 13, SIO_PROC0/1 15-16, SPI0/1 18-19, UART0/1 20-21, ADC 22,
+I2C0/1 23-24, RTC 25.
+
+### 4.9 USB device controller (0x50100000 / 0x50110000)
+
+A functional model - there is no wire-level SIE. `UsbCtrl` decodes one window
+over USBCTRL_DPRAM (4 KB of endpoint buffers + buffer-control words) and
+USBCTRL_REGS. It stores MAIN_CTRL / SIE_CTRL / ADDR_ENDP / USB_PWR / MUXING,
+computes INTR from SIE_STATUS + BUFF_STATUS + EP_STATUS_STALL_NAK, and drives
+USBCTRL_IRQ (IRQ 5) through INTE/INTF.
+
+A **virtual-host** API drives enumeration for tests: `host_reset()` asserts
+SIE_STATUS.BUS_RESET; `host_setup()` writes the 8-byte packet to DPRAM 0x00
+and sets SETUP_REC; `host_in_ep0()` consumes whatever the device queued in the
+EP0 IN buffer (checking the AVAILABLE/FULL/LENGTH fields of
+EP0_IN_BUFFER_CONTROL) and sets BUFF_STATUS + TRANS_COMPLETE; `host_out_ep0()`
+delivers an OUT data stage. Non-EP0 endpoints, double buffering, host mode and
+SOF timing are out of scope.
 
 ### 4.8 DMA (12 channels, 0x50000000)
 

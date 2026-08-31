@@ -467,6 +467,26 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `src/peripherals/dma.{h,cpp}`
 - **Design**: RP2040 datasheet 2.5
 
+#### P4.7: USB device controller (0x50100000)  [DONE (functional)]
+- [x] `UsbCtrl` (`src/peripherals/usb.{h,cpp}`) - one decode window over
+      USBCTRL_DPRAM (4 KB of endpoint buffers + buffer-control registers) and
+      USBCTRL_REGS (@ +0x10000)
+- [x] Registers: ADDR_ENDP, MAIN_CTRL, SIE_CTRL (PULLUP_EN etc.), SIE_STATUS
+      (SETUP_REC / TRANS_COMPLETE / BUS_RESET / CONNECTED, w1c events),
+      BUFF_STATUS (w1c), EP_STALL_ARM / EP_STATUS_STALL_NAK, USB_MUXING,
+      USB_PWR, SOF_WR/RD, INTR (computed) / INTE / INTF / INTS -> USBCTRL_IRQ
+      (IRQ 5), routed to both cores
+- [x] EP0 buffer-control model (LENGTH / AVAILABLE / FULL / PID in the DPRAM)
+- [x] Virtual-host API for enumeration tests: `host_reset()`, `host_setup()`,
+      `host_in_ep0()`, `host_out_ep0()`
+- [ ] Non-EP0 endpoints, double buffering, host mode, SOF timing, the SIE
+      state machine - not modelled (no wire-level link partner)
+- **Tests**: `tests/unit/test_usb.cpp` (5 cases: enable/pullup/addr, bus reset
+      IRQ, a full control-IN transfer with an 18-byte device descriptor, a
+      control-OUT data stage, DPRAM as RAM)
+- **Files**: `src/peripherals/usb.{h,cpp}`
+- **Design**: RP2040 datasheet 4.1
+
 #### P5.1: ADC Controller  [IN PROGRESS]
 - [x] `Adc` BusPeripheral (`src/peripherals/adc.{h,cpp}`) @ 0x4004C000
 - [x] 5 inputs (GPIO26-29 + temp sensor, gated by TS_EN); 12-bit RESULT;
