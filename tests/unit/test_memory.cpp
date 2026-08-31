@@ -132,6 +132,55 @@ TEST_CASE("backdoor rejects spans not fully backed by one region") {
     CHECK(mem.load(kRam, buf.data(), 0));  // zero-length is a no-op success
 }
 
+TEST_CASE("watchpoints latch on a matching write or read, ignore the other") {
+    Memory mem;
+    mem.add_watchpoint(kRam + 4, 1, /*on_read=*/false, /*on_write=*/true);
+
+    CHECK(mem.read_byte(kRam + 4).ok());          // read: not watched
+    std::uint32_t addr = 0;
+    bool was_write = false;
+    CHECK_FALSE(mem.take_watchpoint_hit(addr, was_write));
+
+    CHECK(mem.write_byte(kRam + 4, 0xAAu) == BusStatus::Ok);
+    REQUIRE(mem.take_watchpoint_hit(addr, was_write));
+    CHECK(addr == kRam + 4);
+    CHECK(was_write);
+    CHECK_FALSE(mem.take_watchpoint_hit(addr, was_write));  // one-shot: latch is cleared
+}
+
+TEST_CASE("watchpoints only match their own address span") {
+    Memory mem;
+    mem.add_watchpoint(kRam + 100, 4, /*on_read=*/true, /*on_write=*/true);
+
+    CHECK(mem.write_byte(kRam + 99, 1) == BusStatus::Ok);    // just before
+    CHECK(mem.write_byte(kRam + 104, 1) == BusStatus::Ok);   // just after
+    std::uint32_t addr = 0;
+    bool was_write = false;
+    CHECK_FALSE(mem.take_watchpoint_hit(addr, was_write));
+
+    CHECK(mem.write_byte(kRam + 103, 1) == BusStatus::Ok);   // last byte of the span
+    CHECK(mem.take_watchpoint_hit(addr, was_write));
+}
+
+TEST_CASE("suppress_watchpoints and remove_watchpoint") {
+    Memory mem;
+    mem.add_watchpoint(kRam, 4, /*on_read=*/true, /*on_write=*/true);
+    std::uint32_t addr = 0;
+    bool was_write = false;
+
+    mem.suppress_watchpoints(true);
+    mem.write_word(kRam, 1u);
+    CHECK_FALSE(mem.take_watchpoint_hit(addr, was_write));
+    mem.suppress_watchpoints(false);
+
+    mem.write_word(kRam, 2u);
+    CHECK(mem.take_watchpoint_hit(addr, was_write));
+
+    mem.remove_watchpoint(kRam);
+    mem.write_word(kRam, 3u);
+    CHECK_FALSE(mem.take_watchpoint_hit(addr, was_write));
+}
+
 // --- Peripheral routing ---------------------------------------------------
 
 namespace {

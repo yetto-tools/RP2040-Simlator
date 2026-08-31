@@ -83,6 +83,46 @@ TEST_CASE_FIXTURE(GdbFix, "continue stops at a software breakpoint") {
     CHECK(stub.handle_packet("z0,20000004,2") == "OK");
 }
 
+TEST_CASE_FIXTURE(GdbFix, "continue stops at a write watchpoint") {
+    const std::array<std::uint16_t, 6> prog{
+        0x2120,  // movs r1, #0x20
+        0x0609,  // lsls r1, r1, #24  -> r1 = 0x20000000
+        0x3184,  // adds r1, #0x84    -> r1 = 0x20000084
+        0x2099,  // movs r0, #0x99
+        0x6008,  // str  r0, [r1]
+        0xE7FE,  // b .
+    };
+    REQUIRE(sim.memory().load(kBase, prog.data(), prog.size() * 2));
+
+    CHECK(stub.handle_packet("Z2,20000084,1") == "OK");   // write watchpoint, 1 byte
+    CHECK(stub.handle_packet("c") == "T05watch:20000084;");
+    CHECK(sim.regs(0).pc() == kBase + 10);                 // stopped right after the STR
+    CHECK(sim.memory().read_byte(0x20000084u).value == 0x99u);
+
+    CHECK(stub.handle_packet("z2,20000084,1") == "OK");    // remove it
+}
+
+TEST_CASE_FIXTURE(GdbFix, "continue stops at a read watchpoint") {
+    const std::array<std::uint16_t, 5> prog{
+        0x2120,  // movs r1, #0x20
+        0x0609,  // lsls r1, r1, #24  -> r1 = 0x20000000
+        0x3184,  // adds r1, #0x84    -> r1 = 0x20000084
+        0x6808,  // ldr  r0, [r1]
+        0xE7FE,  // b .
+    };
+    REQUIRE(sim.memory().load(kBase, prog.data(), prog.size() * 2));
+
+    CHECK(stub.handle_packet("Z3,20000084,4") == "OK");   // read watchpoint
+    CHECK(stub.handle_packet("c") == "T05rwatch:20000084;");
+    CHECK(sim.regs(0).pc() == kBase + 8);                  // stopped right after the LDR
+}
+
+TEST_CASE_FIXTURE(GdbFix, "reading watched memory via $m does not trigger the watchpoint") {
+    CHECK(stub.handle_packet("Z4,20000084,4") == "OK");     // access watchpoint on unrelated data
+    CHECK(stub.handle_packet("m20000084,4") == "00000000"); // inspecting via $m: no trap
+    CHECK(stub.handle_packet("c") == "S05");                 // runs normally to the spin-stop
+}
+
 TEST_CASE_FIXTURE(GdbFix, "qSupported advertises the packet size and no-ack mode") {
     const std::string s = stub.handle_packet("qSupported:multiprocess+;xmlRegisters=arm");
     CHECK(s.find("PacketSize=") != std::string::npos);

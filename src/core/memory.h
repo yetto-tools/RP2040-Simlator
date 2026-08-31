@@ -65,6 +65,20 @@ public:
     // existing mapping. Returns false otherwise. `p` is borrowed, not owned.
     bool attach_peripheral(std::uint32_t base, std::uint32_t size, BusPeripheral* p);
 
+    // --- Debug watchpoints (GDB Z2/Z3/Z4) ---------------------------------
+    // Checked on every successful CPU-bus-path access (read_byte/half/word,
+    // write_byte/half/word) - not the backdoor load()/dump() path used by
+    // loaders. A debugger's own memory inspection ($m/$M) also goes through
+    // the bus path (so MMIO peripherals stay inspectable); wrap such calls
+    // in suppress_watchpoints(true)/(false) so they don't re-trigger the
+    // very watchpoint being investigated.
+    void add_watchpoint(std::uint32_t addr, std::uint32_t len, bool on_read, bool on_write);
+    void remove_watchpoint(std::uint32_t addr);
+    void clear_watchpoints() { watchpoints_.clear(); }
+    void suppress_watchpoints(bool v) { suppress_wp_ = v; }
+    // Returns true and fills `addr` at most once per hit; clears the latch.
+    bool take_watchpoint_hit(std::uint32_t& addr, bool& was_write);
+
 private:
     struct PeripheralMapping {
         Region region;
@@ -84,10 +98,24 @@ private:
     template <typename T>
     BusStatus write_scalar(std::uint32_t addr, T value);
 
+    struct Watchpoint {
+        std::uint32_t addr;
+        std::uint32_t len;
+        bool on_read;
+        bool on_write;
+    };
+    void check_watchpoints(std::uint32_t addr, std::uint32_t n, bool is_write);
+
     std::vector<std::uint8_t> rom_;
     std::vector<std::uint8_t> flash_;
     std::vector<std::uint8_t> sram_;
     std::vector<PeripheralMapping> peripherals_;
+
+    std::vector<Watchpoint> watchpoints_;
+    bool suppress_wp_ = false;
+    bool wp_hit_ = false;
+    std::uint32_t wp_hit_addr_ = 0;
+    bool wp_hit_was_write_ = false;
 };
 
 }  // namespace rp2040

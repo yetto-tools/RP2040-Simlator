@@ -36,6 +36,19 @@ int hex_val(char c) {
 
 char hex_digit(unsigned v) { return "0123456789abcdef"[v & 0xF]; }
 
+// Plain hex, no leading zeros (except "0" itself) - for RSP text annotations
+// like "watch:<addr>;", as opposed to the fixed-width little-endian register
+// dump encoding u32_le_hex() produces.
+std::string hex_plain(std::uint32_t v) {
+    if (v == 0) return "0";
+    std::string s;
+    while (v != 0) {
+        s.insert(s.begin(), hex_digit(v & 0xFu));
+        v >>= 4;
+    }
+    return s;
+}
+
 // 32-bit value as 8 little-endian hex digits (GDB's target byte order).
 std::string u32_le_hex(std::uint32_t v) {
     std::string s(8, '0');
@@ -138,26 +151,33 @@ void GdbStub::write_registers(const std::string& hex) {
 }
 
 std::string GdbStub::read_memory(std::uint32_t addr, std::uint32_t len) const {
+    // Suppressed: this is the debugger inspecting memory, not the CPU
+    // executing - it must not re-trigger the watchpoint it's looking at.
+    sim_.memory().suppress_watchpoints(true);
     std::string out;
     for (std::uint32_t i = 0; i < len; ++i) {
         const BusResult<std::uint8_t> b = sim_.memory().read_byte(addr + i);
-        if (!b.ok()) return "E01";
+        if (!b.ok()) { sim_.memory().suppress_watchpoints(false); return "E01"; }
         out += hex_digit(static_cast<unsigned>(b.value) >> 4);
         out += hex_digit(b.value & 0xF);
     }
+    sim_.memory().suppress_watchpoints(false);
     return out;
 }
 
 bool GdbStub::write_memory(std::uint32_t addr, const std::string& hex) {
+    sim_.memory().suppress_watchpoints(true);
     for (std::size_t i = 0; i + 1 < hex.size(); i += 2) {
         const int hi = hex_val(hex[i]);
         const int lo = hex_val(hex[i + 1]);
-        if (hi < 0 || lo < 0) return false;
+        if (hi < 0 || lo < 0) { sim_.memory().suppress_watchpoints(false); return false; }
         const std::uint8_t byte = static_cast<std::uint8_t>((hi << 4) | lo);
         if (sim_.memory().write_byte(addr + static_cast<std::uint32_t>(i / 2), byte) != BusStatus::Ok) {
+            sim_.memory().suppress_watchpoints(false);
             return false;
         }
     }
+    sim_.memory().suppress_watchpoints(false);
     return true;
 }
 
@@ -168,6 +188,11 @@ std::string GdbStub::run(bool single_step) {
         const ExecStatus st = sim_.step();
         if (st == ExecStatus::Breakpoint) return "S05";
         if (st == ExecStatus::Lockup || st == ExecStatus::Undefined) return "S0B";
+        std::uint32_t wp_addr = 0;
+        bool wp_write = false;
+        if (sim_.memory().take_watchpoint_hit(wp_addr, wp_write)) {
+            return "T05" + std::string(wp_write ? "watch" : "rwatch") + ":" + hex_plain(wp_addr) + ";";
+        }
         if (!single_step && breakpoints_.count(sim_.regs(core_).pc()) != 0) return "S05";
         if (!single_step && sim_.regs(core_).pc() == pc) return "S05";  // spin -> stop
     }
@@ -227,13 +252,29 @@ std::string GdbStub::handle_packet(const std::string& p) {
 
         case 'Z':
         case 'z': {
-            // Z0,addr,kind  /  z0,addr,kind  - software breakpoint
-            if (arg.empty() || arg[0] != '0') return "";  // only type 0 supported
-            std::uint32_t addr = 0, kind = 0;
-            if (!parse_addr_len(arg.substr(2), addr, kind)) return "E01";
-            if (cmd == 'Z') breakpoints_.insert(addr);
-            else            breakpoints_.erase(addr);
-            return "OK";
+            // Z0,addr,kind    / z0,addr,kind    - software breakpoint
+            // Z2,addr,length  / z2,addr,length  - write watchpoint
+            // Z3,addr,length  / z3,addr,length  - read watchpoint
+            // Z4,addr,length  / z4,addr,length  - access (read+write) watchpoint
+            if (arg.size() < 2 || arg[1] != ',') return "";
+            const char type = arg[0];
+            std::uint32_t addr = 0, len = 0;
+            if (!parse_addr_len(arg.substr(2), addr, len)) return "E01";
+            if (type == '0') {
+                if (cmd == 'Z') breakpoints_.insert(addr);
+                else            breakpoints_.erase(addr);
+                return "OK";
+            }
+            if (type == '2' || type == '3' || type == '4') {
+                if (cmd == 'Z') {
+                    sim_.memory().add_watchpoint(addr, len, /*on_read=*/type != '2',
+                                                  /*on_write=*/type != '3');
+                } else {
+                    sim_.memory().remove_watchpoint(addr);
+                }
+                return "OK";
+            }
+            return "";  // unsupported type
         }
 
         case 'q': {

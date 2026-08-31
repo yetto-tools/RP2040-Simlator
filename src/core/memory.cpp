@@ -1,5 +1,6 @@
 #include "core/memory.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace rp2040 {
@@ -49,6 +50,41 @@ Memory::PeripheralMapping* Memory::find_peripheral(std::uint32_t addr, std::uint
     return nullptr;
 }
 
+// --- debug watchpoints ---------------------------------------------------
+
+void Memory::add_watchpoint(std::uint32_t addr, std::uint32_t len, bool on_read, bool on_write) {
+    watchpoints_.push_back({addr, len == 0 ? 1u : len, on_read, on_write});
+}
+
+void Memory::remove_watchpoint(std::uint32_t addr) {
+    watchpoints_.erase(
+        std::remove_if(watchpoints_.begin(), watchpoints_.end(),
+                        [addr](const Watchpoint& w) { return w.addr == addr; }),
+        watchpoints_.end());
+}
+
+bool Memory::take_watchpoint_hit(std::uint32_t& addr, bool& was_write) {
+    if (!wp_hit_) return false;
+    addr = wp_hit_addr_;
+    was_write = wp_hit_was_write_;
+    wp_hit_ = false;
+    return true;
+}
+
+void Memory::check_watchpoints(std::uint32_t addr, std::uint32_t n, bool is_write) {
+    if (suppress_wp_ || wp_hit_) return;  // one latched hit is enough to stop the debugger
+    for (const auto& w : watchpoints_) {
+        const bool overlaps = addr < w.addr + w.len && w.addr < addr + n;
+        if (!overlaps) continue;
+        if ((is_write && w.on_write) || (!is_write && w.on_read)) {
+            wp_hit_ = true;
+            wp_hit_addr_ = w.addr;
+            wp_hit_was_write_ = is_write;
+            return;
+        }
+    }
+}
+
 // --- scalar access templates --------------------------------------------
 
 template <typename T>
@@ -66,12 +102,14 @@ BusResult<T> Memory::read_scalar(std::uint32_t addr) {
         for (std::uint32_t i = 0; i < width; ++i) {
             value = static_cast<T>(value | (static_cast<T>(p[i]) << (8u * i)));
         }
+        check_watchpoints(addr, width, /*is_write=*/false);
         return {value, BusStatus::Ok};
     }
 
     if (PeripheralMapping* m = find_peripheral(addr, width)) {
         BusResult<std::uint32_t> r =
             m->peripheral->bus_read(addr - m->region.base, width_of(width));
+        if (r.status == BusStatus::Ok) check_watchpoints(addr, width, /*is_write=*/false);
         return {static_cast<T>(r.value), r.status};
     }
 
@@ -92,13 +130,16 @@ BusStatus Memory::write_scalar(std::uint32_t addr, T value) {
         for (std::uint32_t i = 0; i < width; ++i) {
             p[i] = static_cast<std::uint8_t>(raw >> (8u * i));
         }
+        check_watchpoints(addr, width, /*is_write=*/true);
         return BusStatus::Ok;
     }
 
     if (PeripheralMapping* m = find_peripheral(addr, width)) {
-        return m->peripheral->bus_write(addr - m->region.base,
+        const BusStatus st = m->peripheral->bus_write(addr - m->region.base,
                                         static_cast<std::uint32_t>(value),
                                         width_of(width));
+        if (st == BusStatus::Ok) check_watchpoints(addr, width, /*is_write=*/true);
+        return st;
     }
 
     return BusStatus::InvalidAddress;

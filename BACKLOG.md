@@ -757,10 +757,18 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] $?, qSupported (PacketSize + QStartNoAckMode+), qAttached, qC,
       threadinfo, QStartNoAckMode, H, D, k
 - [x] TCP transport `serve(port)` (winsock / BSD sockets); CLI `--gdb <port>`
-- [ ] Watchpoints ($Z2-4), $qXfer:features:read (target.xml), per-core
-      thread switching, run-length-encoded replies, live arm-none-eabi-gdb
-      integration test
-- **Tests**: `tests/unit/test_gdb_stub.cpp` (7 cases)
+- [x] Watchpoints ($Z2/$Z3/$Z4 write/read/access, $z2-4 remove): backed by a
+      new watchpoint mechanism in `Memory` itself (checked on every
+      successful CPU-bus-path access - read_byte/half/word,
+      write_byte/half/word - not the loaders' backdoor path), since that's
+      the single choke point for both real CPU accesses and this stub's own
+      $m/$M reads. `Memory::suppress_watchpoints()` stops the debugger's own
+      $m/$M memory inspection from re-triggering the watchpoint it's
+      investigating. Reports `T05watch:<addr>;` / `T05rwatch:<addr>;`.
+- [ ] $qXfer:features:read (target.xml), per-core thread switching,
+      run-length-encoded replies, live arm-none-eabi-gdb integration test
+- **Tests**: `tests/unit/test_gdb_stub.cpp` (10 cases), plus 3 new
+      `tests/unit/test_memory.cpp` cases for the watchpoint mechanism itself
 - **Design**: GDB RSP spec; ARM m-profile register layout
 - **Files**: `src/debuggers/gdb_stub.{h,cpp}`, `src/main.cpp`
 - **Effort**: 30 hours
