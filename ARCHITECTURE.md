@@ -270,7 +270,7 @@ simulator; the rest are decoded as unmapped register space.
 | **0x50100000 / 0x50110000** | **USBCTRL_DPRAM / _REGS** | yes | device controller, EP0 only (§4.9); -> IRQ5 |
 | **0x50200000 / 0x50300000** | **PIO0 / PIO1** | yes | 4 SMs each; -> IRQ7..10 |
 | 0x50400000 | XIP_AUX | no | |
-| **0xD0000000** | **SIO** | yes | CPUID, GPIO, inter-core FIFO, 32 spinlocks |
+| **0xD0000000** | **SIO** | yes | CPUID, GPIO, inter-core FIFO, 32 spinlocks, integer divider |
 | **0xE000E000** | **SCS** (per core) | yes | SysTick, NVIC, SCB - banked per core |
 
 ### 2.3 Access Sizes & Alignment
@@ -1145,8 +1145,13 @@ UF2 block (512 bytes, little-endian):
 The loader validates both start magics + the end magic, `numBlocks` vs the
 file length, the payload cap, and the family ID (when present); skips
 not-main-flash blocks; and copies each payload through the Memory backdoor.
-`Simulator::load()` dispatches on the `.uf2` extension and always resets
-through the image's vector table.
+`Simulator::load()` dispatches on the `.uf2` extension and resets through the
+image's vector table - offset by 256 bytes when the image lands in flash
+(`Memory::kFlash`), to skip the mandatory stage-2 bootloader real RP2040
+silicon always runs first (every pico-sdk `boot2_*.S` - and any equivalent
+hand-written flash image - is exactly 256 bytes, CRC32 included). SRAM-target
+images have no boot2 (the boot ROM never validates them), so VTOR stays at
+the image's lowest loaded address unchanged.
 
 ### 8.3 PIO Assembler  (`src/pio/pio_assembler.{h,cpp}`)
 
@@ -1268,6 +1273,300 @@ $ python3 tools/compare_traces.py simulated.vcd hardware.vcd
 | ADC | 3 (Accurate) | Conversion timing realistic |
 | Clock Mgr | 3 (Accurate) | Frequency calculation exact |
 | USB | 2 (Functional) | Enumeration only (Phase 1) |
+
+---
+
+## 12. Local Web Lab
+
+Added 2026-08-31 as a second, browser-based front-end alongside `rp2040-sim`
+(see `CONTEXT.md` Decision 6 and `BACKLOG.md` P10.1-P10.3 for the scope
+decision and status). It's a thin client/server pair wrapping `rp2040_core`
+through its existing public API - no changes to the core, and none of its
+dependency-free guarantee is affected, since neither half of this pair links
+into `rp2040_core` itself.
+
+```
+Browser (web/, Vite + React + TS)           tools/lab_server (native exe)
+┌───────────────────────────────┐   HTTP/   ┌──────────────────────────────┐
+│ Editor.tsx  - Monaco, gutter   │   JSON    │ main.cpp    - httplib routes │
+│   breakpoints                  │◄─────────►│ DebugSession - owns one      │
+│ Console.tsx - UART in/out       │  polled   │   Simulator, background     │
+│ PinPanel.tsx - GPIO state/      │  ~5 Hz    │   run-loop thread            │
+│   external stimulus             │           │ Compiler    - spawns         │
+│ DebugToolbar/RegisterView.tsx  │           │   arm-none-eabi-gcc/objdump  │
+└───────────────────────────────┘           └──────────────────────────────┘
+```
+
+### 12.1 Backend (`tools/lab_server`)
+
+- **`DebugSession`** (`debug_session.{h,cpp}`) is the only genuinely new
+  logic, and it's a near-copy of `gdb_stub.cpp`'s `run()` pattern (§7.1):
+  a `std::set<uint32_t>` of PC breakpoints, checked each step alongside
+  `Memory::take_watchpoint_hit()` (§7.2's watchpoint mechanism, reused
+  as-is). The difference from the GDB stub is concurrency: continuing runs
+  on a background `std::thread` in batches of 2000 instructions per
+  `std::mutex` lock (released between batches) so the HTTP server's
+  `/state` polling isn't starved while firmware runs. `snapshot()` takes the
+  same lock to read `Simulator::regs()/gpio()/uart()/cycle_count()`.
+- **`Compiler`** (`compiler.{h,cpp}`) spawns `arm-none-eabi-gcc` with the
+  same flags/linker script as `tests/fixtures/firmware.ld`'s own build step
+  (§8's ELF path, unchanged), using a real argv vector
+  (`_spawnv`/`posix_spawn`, no shell) - a shell-command-string version was
+  tried first and failed silently at runtime on Windows due to `cmd.exe`
+  quoting ambiguity around multiple quoted arguments. It additionally runs
+  `arm-none-eabi-objdump -dl --no-show-raw-insn` on the resulting ELF and
+  parses its interleaved `file:line` / `addr: insn` text output into a
+  source-line -> PC-address map, so the frontend's Monaco gutter clicks can
+  set real address breakpoints without a full DWARF `.debug_line` parser.
+- **`main.cpp`** wires httplib routes (`/compile`, `/load`, `/run`,
+  `/pause`, `/step`, `/state`, `/breakpoints`, `/gpio/:pin/external`,
+  `/uart/:n/feed`) to one `DebugSession`, base64-encoding ELF/UF2 bytes for
+  JSON transport.
+- `httplib.h` (v0.54.1) and `json.hpp` (v3.12.0) are vendored single headers
+  under `tools/lab_server/vendor/` (MIT, same pattern as
+  `tests/vendor/doctest.h`) - used **only** by this optional tool, matching
+  `rp2040-sim`'s own "optional tool, not core" tier in the CMake tree.
+
+### 12.2 Frontend (`web/`)
+
+Vite + React + TypeScript, `@monaco-editor/react` for the editor. Talks to
+the backend purely over `fetch()` (`web/src/api.ts`), polling `/state` at a
+fixed interval while mounted. Two implementation details worth recording
+because they cost real debugging time and would recur in any similar
+React+Monaco embedding:
+
+- **CORS preflight double-header bug**: the backend originally called
+  `set_default_headers({{"Access-Control-Allow-Origin","*"}})` *and* set the
+  same header again inside its `Options` handler. The resulting duplicated
+  header is spec-invalid and Chrome rejects it for every preflighted
+  (POST) request while leaving simple GET requests (like `/state` polling)
+  unaffected - so the UI looked like it was working (register/pin panels
+  kept updating) while every button (`Compile`, `Run`, `Step`, breakpoints)
+  silently failed with a bare `fetch()` "Failed to fetch", no server-side
+  error to point at. Fixed by setting the header exactly once.
+- **Monaco initial-layout race**: Monaco measures its container
+  synchronously on mount; inside this app's CSS grid, that measurement can
+  race ahead of the browser's own layout pass and lock in a near-zero size.
+  Because nothing about the *container* resizes afterward, `automaticLayout`
+  option's `ResizeObserver` never has a reason to fire again, so the editor
+  stays stuck tiny. Fixed with a deferred `editor.layout()` call
+  (`requestAnimationFrame`) once, right after mount.
+- **`onMount` stale-closure trap**: `@monaco-editor/react`'s `onMount`
+  fires exactly once per editor instance, so a callback it registers (here,
+  the gutter-click `onMouseDown` handler) permanently closes over whatever
+  props existed at that first render - in this case, the empty `lineMap`
+  from before any compile had happened. Fixed by reading the current
+  callback through a `ref` kept up to date every render, rather than
+  closing over the prop directly.
+
+### 12.3 pico-sdk compile mode
+
+`/compile`'s `mode: "pico_sdk"` builds the submitted `main.c` as a real
+pico-sdk project (fixed `CMakeLists.txt` linking `pico_stdlib` + the
+`hardware_*` libraries this simulator implements) instead of §12.1's bare
+`arm-none-eabi-gcc` invocation, using a **persistent** project/build
+directory pair so Ninja's incremental build stays fast after the first
+compile (pico-sdk's own core libraries build from scratch the first time -
+seconds, not the freestanding path's near-instant single-file compile).
+
+Getting a real pico-sdk binary to actually *boot* in this simulator - not
+just compile - surfaced three real gaps, found by attaching
+`arm-none-eabi-gdb` to the existing GDB stub (§7.1) and reading the actual
+backtrace at each fault rather than guessing:
+
+- **Boot ROM dependency**: pico-sdk's ELF entry point (`_entry_point`,
+  `pico_crt0/crt0.S`) deliberately jumps back into the RP2040's boot ROM on
+  real hardware before ever reaching `main()`. This simulator's ROM is an
+  empty 16 KiB block (§2 - no proprietary, unredistributable bootrom
+  image), so that jump lands on garbage. The fix doesn't fake the ROM:
+  `Simulator::load(path, from_entry=false)` resets through the image's
+  *real* vector table instead (`_reset_handler`, not `_entry_point` - the
+  same code the ROM itself would have jumped to), which was already a
+  supported load mode, just never exercised by anything with a boot2-style
+  stub segment before its vector table until now. Two of pico-sdk's
+  `runtime_init()` steps still call `rom_func_lookup()` directly regardless
+  of entry point; those are disabled via the SDK's own documented
+  `PICO_RUNTIME_SKIP_INIT_BOOTROM_RESET` flags, and its bit-ops/divider/
+  double/float helper libraries (which also default to ROM-lookup
+  implementations) are steered to their `compiler` (libgcc) variants
+  instead. **Approximation, stated plainly**: firmware built this way is
+  not using the same optimized bootrom routines real hardware would; it's
+  correct, not identically fast.
+- **Vector table addressing** (general core fix, not lab-server-specific):
+  `Simulator::load()`'s `from_entry=false` path used to take the *lowest*
+  loaded PT_LOAD segment's address as VTOR. That's wrong for any flash
+  image with a boot-stage stub before its real vector table - it now
+  prefers the ELF's `__vectors`/`__VECTOR_TABLE` symbol
+  (`ElfImage::symbol_named()`, `elf_loader.{h,cpp}`) when present, falling
+  back to the old behavior otherwise. This also fixes `rp2040-sim`'s own
+  CLI boot path, not just the lab server.
+- **Atomic register aliasing** (general core fix): the RP2040 datasheet
+  (2.1.3) defines peripheral-base + 0x1000/0x2000/0x3000 as XOR/SET/CLEAR
+  aliases of the register at the base address - `hw_set_bits()` /
+  `hw_clear_bits()` / `hw_xor_bits()`, used throughout every pico-sdk
+  peripheral driver, compile straight to a write at one of these aliased
+  addresses. `Memory::write_scalar()` didn't implement this at all
+  (§2.4/2.5's peripheral dispatch only matched a register's own, unaliased
+  address), so any pico-sdk driver call faulted immediately. Now: a write
+  whose direct address doesn't match any attached peripheral is retried
+  with bits [13:12] masked off; if *that* address matches, the alias type
+  selects a read-modify-write (XOR/OR/AND-NOT) against the peripheral's
+  real register instead of a plain store.
+
+### 12.4 Multi-file projects
+
+`/compile`'s `source: string` became `files: [{name, content}]` (flat, no
+subdirectories, `.c`/`.h` only - `BACKLOG.md` P10.4's own framing, not a
+general multi-file CMake project). Both compile paths (§12.1, §12.3) accept
+the same file set; `LineAddr` gained a `file` field so breakpoints resolve
+per-(file, line).
+
+- **Backend**: freestanding mode writes the whole set into a fresh
+  per-request subdirectory with real names (headers resolve via normal
+  same-directory `#include "..."`, no special handling needed); pico-sdk
+  mode's `CMakeLists.txt` glob (`file(GLOB SOURCES CONFIGURE_DEPENDS *.c)`)
+  picks up the current file set automatically on the next `cmake --build`,
+  and stale files from a previous compile that are no longer in the set are
+  deleted before writing - otherwise a file removed client-side would
+  linger on disk and stay linked into the build.
+- **Frontend**: `Editor.tsx` moved from a single controlled Monaco model
+  (`value`/`onChange`) to one `monaco.editor.ITextModel` per file, since
+  undo history and cursor position live on the model, not on whatever
+  string a render happens to pass as `value`. A model's content is only
+  overwritten when it actually differs from the incoming prop, so this
+  editor's own edits (which round-trip back through React state unchanged)
+  never reset the cursor mid-keystroke - only genuinely external changes
+  (switching mode, restoring from `localStorage`) do.
+  - **`onMount`-ordering race, found live**: `@monaco-editor/react` loads
+    the Monaco library itself asynchronously, so its `onMount` callback can
+    fire *after* a `files`-keyed sync effect has already run once (with the
+    editor ref still null, a no-op) - and since refs don't cause
+    re-renders, nothing would ever re-trigger that effect again. Fixed by
+    calling the same sync logic once directly inside `onMount`, reading
+    `files`/`activeFile` through refs kept current every render (the same
+    pattern §12.2's stale-closure fix already established) rather than
+    relying on the effect firing again.
+- The whole project (mode, files, active tab) auto-persists to
+  `localStorage` (~500ms debounced) - one working set, not a
+  multi-project manager; see `BACKLOG.md` P10.5 for that and the rest of
+  what's still deferred.
+
+### 12.5 Explicitly out of scope
+
+A real DWARF `.debug_line` reader (§12.1's breakpoint mapping is
+objdump-output parsing) and named/multiple saved projects are deferred.
+See `BACKLOG.md` P10.5. (A drag-and-drop circuit editor was also listed
+here at the original scope-decision point - see §12.6, it's built.)
+
+### 12.6 Drag-and-drop circuit editor
+
+Originally deferred at scope-decision time (2026-08-31, `CONTEXT.md`
+Decision 6) as a multi-year feature; the author asked for it anyway and it
+was built incrementally, component by component, each verified end-to-end
+against real firmware before the next was added. `web/src/components/
+circuit/*`, on `@xyflow/react` (React Flow v12) rather than a from-scratch
+canvas.
+
+- **The Pico board node** (`PicoNode.tsx`) is fixed (not draggable/
+  deletable, synthesized fresh every render - see `CircuitCanvas.tsx`'s
+  `PICO_NODE` constant) with a connection handle per GPIO plus the power/
+  control pins (3V3, 3V3_EN, VBUS, VSYS, GND - structural only, not wired
+  to anything simulated). Pin data (which GPIOs map to which peripheral,
+  ADC channel, SPI/I2C instance) lives centrally in `picoPinout.ts`.
+- **Component nodes** are one of two shapes:
+  - *Single-GPIO* (LED, Button, Potentiometer, Buzzer): resolved by
+    `useCircuitWiring()` to a `Map<nodeId, {gpio, state}>` - one wire in,
+    one `PinState` out. Button/Pot also carry a callback (`onGpioPress`/
+    `onAdcChange`, wired through `App.tsx`) back into the simulator
+    (`DebugSession::set_gpio_external`/`set_adc_external`).
+  - *Multi-pin* (the ST7789 TFT, the SSD1306 OLED): `useMultiPinWiring()`
+    instead resolves a `Map<nodeId, Map<handleId, gpio>>`, since these
+    need several named pins (SCK/MOSI/CS/DC for the TFT; SDA/SCL for the
+    OLED) rather than one. Both are *virtual devices*, not RP2040
+    peripherals - `src/peripherals/st7789.{h,cpp}` and `ssd1306.{h,cpp}` -
+    dynamically attached/detached against whichever SPI/I2C instance the
+    wiring implies (`spiInstanceForPins`/`i2cInstanceForPins` in
+    `picoPinout.ts`, inferred from the wired SCK+MOSI or SDA+SCL pair
+    rather than asking the user to pick a bus number). Each node manages
+    its own attach lifecycle directly via `api.ts` calls in a `useEffect`
+    (not routed through `App.tsx` like the single-GPIO nodes' callbacks -
+    there's no shared App state to update afterward) and polls its
+    framebuffer on its own slower interval, rendering into a `<canvas>`.
+    `DebugSession` holds one attach slot per device type
+    (`reattach_st7789_locked()`/`reattach_ssd1306_locked()`, re-run at the
+    end of every `load()` since that replaces the whole `Simulator`) - a
+    second TFT or OLED node would silently steal the slot from the first;
+    not guarded against, documented in the node source instead.
+  - ILI9341 (`src/peripherals/ili9341.h`) needed no new emulator at all: it's
+    a MIPI DBI Type C controller like ST7789, and every command this
+    project implements (SWRESET/CASET/RASET/RAMWR/MADCTL/...) uses the same
+    opcodes on both - only panel resolution differs (240x320 vs ST7789's
+    240x240). `St7789`'s width/height became constructor parameters
+    (previously `kWidth`/`kHeight` static constants) so `Ili9341` is a
+    ~10-line subclass that just passes 240x320 through; `DebugSession` and
+    the HTTP surface still treat it as its own device (own attach slot,
+    own `/ili9341/*` routes, own `Ili9341Node.tsx`) so wiring both an
+    ST7789 and an ILI9341 at once (on different SPI instances) works.
+  - The SSD1306 additionally needed `I2c::on_stop()` (`i2c.h`/`i2c.cpp`),
+    a hook the ST7789/SPI path never needed: I2C's per-transaction control
+    byte (Co/D-C bits, datasheet-external - SSD1306's own protocol) means
+    the device needs to know when a STOP resets that framing, which
+    `Spi::SlaveFn`'s simpler per-byte shape has no equivalent of. Additive
+    - the 8 pre-existing `I2c::SlaveFn` call sites are unaffected.
+- **Persistence**: `Project.circuit` (nodes + edges) rides along in the
+  same `localStorage` blob as the code editor state (§12.4), preserved
+  across Freestanding/pico-sdk mode switches.
+- **Verification**: every component was checked against real firmware
+  (freestanding, direct register pokes - not pico-sdk's `hardware_*`
+  wrappers, to exercise the same register-level path real code would take)
+  driven through the actual browser UI, not just `ctest`: an LED/button
+  loop, a potentiometer read into ADC, a buzzer PWM tone, an ST7789
+  `RAMWR` fill matched pixel-for-pixel against the polled framebuffer, and
+  an SSD1306 init+GDDRAM-write sequence (mirroring MicroPython's
+  `ssd1306.py` transaction framing exactly) matched bit-for-bit against
+  `gddram()`, and an ILI9341 init+`RAMWR` fill (SPI1, direct register
+  pokes, mirroring pico-sdk's own register-level `hardware_spi` path) came
+  back as a uniform 153600-byte 0x07E0 framebuffer, both in the canvas and
+  via `/ili9341/framebuffer`.
+
+**Polish pass** (frontend-only, no `src/`/`tools/` changes), driven by
+friction hit firsthand while wiring the last three components above:
+- **Placement**: `CircuitCanvas.tsx`'s `handleAdd` used to drop every new
+  node into a fixed random band regardless of what was already there -
+  every multi-pin device needed a manual drag to un-overlap it. Replaced
+  with `findFreeSpot()`: a small per-kind approximate footprint table plus
+  a column-major grid scan that places a new node at the first slot that
+  doesn't overlap any existing node's footprint. Existing nodes never move.
+- **Invalid-wiring feedback**: `Tft7789Node`/`Ili9341Node`/`OledNode` used
+  to show the same generic "wire ..." placeholder whether nothing was wired
+  yet or the wired pins just couldn't work together (e.g. SCK/MOSI on
+  different SPI instances) - the latter now gets its own error-styled
+  message, mirroring the `(not ADC)` precedent `PotNode.tsx` already set
+  for a wired-but-invalid pin. A `hasSibling` flag (computed once per
+  render in `CircuitCanvas.tsx` by counting nodes per type) also surfaces a
+  warning badge when two nodes of the same device type compete for the
+  backend's one attach slot per type - a real limitation from day one,
+  just not previously visible in the UI. `hasSibling` is also in each
+  node's attach-effect dependency array, not just its render output: a
+  same-type sibling's unmount cleanup unconditionally detaches the shared
+  backend slot (it has no way to know whether *it* is the one currently
+  holding it), which would otherwise silently orphan a surviving,
+  correctly-wired node - found by hand (deleting a duplicate ST7789 node
+  left the real one dark) while investigating a "the display shows
+  nothing" report. Re-running the effect on every sibling-count change
+  re-attaches whichever instance's effect runs last.
+- **Notes**: a new `"note"` node kind (`NoteNode.tsx`) - free-text canvas
+  annotations, no `Handle`s, added/removed exactly like any other node
+  (`onNodesChange`/`applyNodeChanges` already handled Delete/Backspace for
+  free). A small label strip above the textarea acts as the drag handle,
+  since the textarea itself needs `nodrag` and would otherwise leave
+  nothing left to grab.
+- **Potentiometer**: `PotNode.tsx` swapped its `<input type=range>` for an
+  SVG rotary-knob visual (pointer-capture drag, angle mapped across a 270°
+  sweep like a real pot's mechanical travel) - same controlled `raw` state
+  and `onChange` wiring as before, so `api.setAdcExternal` is unaffected.
+- Handle size/hover affordance, and themed selected-node/edge styling, in
+  `index.css`.
 
 ---
 

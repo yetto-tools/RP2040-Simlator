@@ -17,13 +17,19 @@ A **cycle-accurate, publish-ready simulator** of the Raspberry Pi Pico (RP2040) 
 - ✅ Deterministic: no randomness, no threading, fully reproducible
 - ✅ Testable: large automated test suite validating every component
 - ✅ Publishable: academic-grade code suitable for peer review
-- ✅ Independent: simulator works WITHOUT a GUI
+- ✅ Independent: `rp2040_core` works WITHOUT any GUI or server around it
 - ✅ Single target: RP2040 only (not a multi-chip/multi-family framework — that's a post-tesis concern)
 
 Out of scope for the thesis phase:
-- ❌ GUI (Qt, VSCode, Web) — post-tesis optional
 - ❌ Other microcontroller families — RP2040 only
 - ❌ Production/commercial features — academic focus
+- ❌ Full drag-and-drop circuit editor (Wokwi-style wiring/breadboard) — a
+  multi-year feature on its own; deferred past the thesis (see `BACKLOG.md`)
+
+In scope, added 2026-08-31: a local browser-based "virtual lab" (code editor
+with breakpoints, run/step controls, a GPIO pin panel) — see `ARCHITECTURE.md`
+"Local web lab" and `BACKLOG.md` for what this is and why it doesn't touch
+`rp2040_core`'s dependency-free guarantee.
 
 ---
 
@@ -69,9 +75,10 @@ RP2040 Simulator (monolithic for the thesis)
 └─ CLI front-end: rp2040-sim (src/main.cpp)
 ```
 
-Post-tesis: a GUI or multi-core-family plugin layer could wrap this library
-without changing the core (see `ARCHITECTURE.md` for how the boundaries are
-drawn today).
+The local web lab (`tools/lab_server` + `web/`, added 2026-08-31) wraps this
+same library through its existing public API - no core changes. A full
+drag-and-drop circuit editor, or a multi-core-family plugin layer, remain
+post-tesis (see `ARCHITECTURE.md` for how the boundaries are drawn today).
 
 ### Execution model
 
@@ -119,10 +126,15 @@ Single-header, no external dependency, already vendored at
 `tests/vendor/doctest.h`. Tests live under `tests/unit/`,
 `tests/integration/`, `tests/hardware_cmp/`, `tests/regression/`.
 
-### Decision 6: CLI Interface Only (No GUI in the Thesis)
-`rp2040-sim` (from `src/main.cpp`) is the only front-end for the thesis
-phase. A GDB stub (RSP protocol) provides interactive debugging instead of
-a graphical debugger. GUI work is explicitly post-tesis.
+### Decision 6: CLI + Local Web Lab as Front-Ends (No Circuit Editor in the Thesis)
+`rp2040-sim` (from `src/main.cpp`) is the scriptable/automatable front-end,
+and a GDB stub (RSP protocol) provides interactive debugging for it. As of
+2026-08-31, `tools/lab_server` + `web/` add a second, browser-based front-end
+("virtual lab": code editor with breakpoints, run/step, a GPIO pin panel) -
+this was a deliberate scope change, not an oversight; see `BACKLOG.md` for
+the phase this belongs to. What's still explicitly out of scope for the
+thesis is a full drag-and-drop circuit editor (Wokwi's own multi-year
+feature) - the pin panel is a deliberately smaller v1 substitute.
 
 ### Hardware fidelity is non-negotiable
 See `CLAUDE.md` "Critical Constraints" — no simplified/mock PIO, no skipped
@@ -184,10 +196,13 @@ tests/
 
 ## 📝 IMPORTANT NOTES (still binding)
 
-### No GUI in the thesis
-CLI + GDB stub only. GUI (Qt/VSCode/Web) is explicitly post-tesis — see
-`CLAUDE.md` for the reasoning (12-week budget, GUI is 4-6 weeks of
-non-essential work).
+### Local web lab is in scope; a full circuit editor is not
+`tools/lab_server` + `web/` (added 2026-08-31) is a thin HTTP/JSON server
+wrapping `rp2040_core` unchanged, plus a Vite+React+Monaco frontend - not a
+new simulation feature, and not the kind of GUI work the original 12-week
+budget excluded. A Wokwi-style drag-and-drop circuit editor is still
+explicitly post-tesis: it's a multi-year feature on its own, and the v1 pin
+panel covers the pedagogically-useful subset (see `BACKLOG.md`).
 
 ### Cycle accuracy and determinism
 Both are hard requirements, not aspirations — see Design Decisions 1-2
@@ -238,8 +253,8 @@ Deliverables: thesis manuscript, source code, documentation
 (README/ARCHITECTURE/DESIGN/BACKLOG/CLAUDE), test suite, hardware
 validation data (pending physical Pico access — see `BACKLOG.md` Phase 8).
 
-Not included (post-tesis): GUI, other MCU families, production deployment,
-cloud integration, community features.
+Not included (post-tesis): a full drag-and-drop circuit editor, other MCU
+families, production deployment, cloud integration, community features.
 
 ---
 

@@ -142,6 +142,37 @@ BusStatus Memory::write_scalar(std::uint32_t addr, T value) {
         return st;
     }
 
+    // RP2040 atomic register aliasing (datasheet 2.1.3 "Atomic Register
+    // Access"): within the APB/AHB peripheral register space, address bits
+    // [13:12] select XOR/SET/CLEAR against the same underlying register at
+    // the unaliased address, instead of a plain write - hw_xor_bits() /
+    // hw_set_bits() / hw_clear_bits() (used throughout every pico-sdk
+    // peripheral driver) compile straight to this. Not used by SIO or the
+    // PPB, which have their own dedicated atomic registers instead of
+    // address-based aliasing.
+    if (kRegisterSpace.contains(addr)) {
+        const std::uint32_t alias = addr & 0x3000u;
+        const std::uint32_t base_addr = addr & ~0x3000u;
+        if (alias != 0u) {
+            if (PeripheralMapping* m = find_peripheral(base_addr, width)) {
+                const std::uint32_t offset = base_addr - m->region.base;
+                const BusResult<std::uint32_t> cur = m->peripheral->bus_read(offset, width_of(width));
+                if (!cur.ok()) return cur.status;
+                std::uint32_t next = cur.value;
+                const auto v = static_cast<std::uint32_t>(value);
+                switch (alias) {
+                    case 0x1000u: next ^= v; break;   // XOR
+                    case 0x2000u: next |= v; break;   // SET
+                    case 0x3000u: next &= ~v; break;  // CLEAR
+                    default: break;
+                }
+                const BusStatus st = m->peripheral->bus_write(offset, next, width_of(width));
+                if (st == BusStatus::Ok) check_watchpoints(base_addr, width, /*is_write=*/true);
+                return st;
+            }
+        }
+    }
+
     return BusStatus::InvalidAddress;
 }
 

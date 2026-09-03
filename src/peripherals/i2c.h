@@ -47,6 +47,16 @@ public:
     using SlaveFn = std::function<bool(bool is_read, std::uint8_t& byte)>;
     void set_slave(std::uint8_t addr7, SlaveFn fn) { slave_addr_ = addr7; slave_ = std::move(fn); }
 
+    // Optional: called once per I2C STOP condition addressed to the
+    // registered slave (a Cmd with .stop set - firmware requests this by
+    // setting IC_DATA_CMD.STOP on the final byte of a transaction, matching
+    // real DW_apb_i2c). Doesn't change SlaveFn's per-byte shape (existing
+    // slaves/tests are unaffected) - it's for a *stateful* slave whose
+    // per-byte meaning depends on transaction framing (e.g. an SSD1306's
+    // control-byte-then-data-run protocol, where a fresh control byte is
+    // only expected at the start of the next transaction).
+    void on_stop(std::function<void()> fn) { on_stop_ = std::move(fn); }
+
     // Hold SCL low for `ic_clk_cycles` extra cycles on the next transaction
     // only (simulated clock stretching by the registered slave).
     void stretch_next(std::uint32_t ic_clk_cycles) { stretch_cycles_ = ic_clk_cycles; }
@@ -100,6 +110,7 @@ private:
 
     std::uint8_t slave_addr_ = 0xFF;
     SlaveFn slave_;
+    std::function<void()> on_stop_;
 };
 
 }  // namespace rp2040

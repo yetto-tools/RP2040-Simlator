@@ -72,6 +72,47 @@ std::vector<std::uint8_t> build_elf(std::uint32_t entry, const std::vector<Segme
     return b;
 }
 
+// Appends a minimal SHT_SYMTAB + SHT_STRTAB (+ a leading null section header)
+// with a single symbol to an already-built ELF, for exercising
+// ElfImage::symbol_named() - real toolchains emit `__vectors`/`__VECTOR_TABLE`
+// at the vector table's address, which Simulator::load()'s from_entry=false
+// path now prefers over the lowest PT_LOAD segment (see BACKLOG.md P10.3:
+// a flash image with a boot-stage stub segment before the real vector table
+// - e.g. the RP2040 SDK's boot2 - was reading that stub as [SP, PC] instead).
+std::vector<std::uint8_t> append_one_symbol(std::vector<std::uint8_t> elf, const std::string& name,
+                                             std::uint32_t value) {
+    constexpr std::size_t kShdr = 40, kSym = 16;
+    const std::size_t strtab_off = elf.size();
+    std::vector<std::uint8_t> strtab{0};  // index 0 is always the empty string
+    strtab.insert(strtab.end(), name.begin(), name.end());
+    strtab.push_back(0);
+    elf.insert(elf.end(), strtab.begin(), strtab.end());
+
+    const std::size_t symtab_off = elf.size();
+    std::vector<std::uint8_t> symtab(kSym * 2, 0u);  // [0]=mandatory null entry, [1]=ours
+    wr32(symtab, kSym + 0, 1);      // st_name = offset 1 in strtab
+    wr32(symtab, kSym + 4, value);  // st_value
+    symtab[kSym + 12] = 0x12;       // st_info = GLOBAL | FUNC
+    elf.insert(elf.end(), symtab.begin(), symtab.end());
+
+    const std::size_t shoff = elf.size();
+    std::vector<std::uint8_t> shdrs(kShdr * 3, 0u);  // [0]=null, [1]=.symtab, [2]=.strtab
+    wr32(shdrs, kShdr * 1 + 4, 2 /*SHT_SYMTAB*/);
+    wr32(shdrs, kShdr * 1 + 16, static_cast<std::uint32_t>(symtab_off));
+    wr32(shdrs, kShdr * 1 + 20, static_cast<std::uint32_t>(symtab.size()));
+    wr32(shdrs, kShdr * 1 + 24, 2 /*sh_link -> strtab is section index 2*/);
+    wr32(shdrs, kShdr * 2 + 4, 3 /*SHT_STRTAB*/);
+    wr32(shdrs, kShdr * 2 + 16, static_cast<std::uint32_t>(strtab_off));
+    wr32(shdrs, kShdr * 2 + 20, static_cast<std::uint32_t>(strtab.size()));
+    elf.insert(elf.end(), shdrs.begin(), shdrs.end());
+
+    wr32(elf, 32, static_cast<std::uint32_t>(shoff));  // e_shoff
+    wr16(elf, 46, static_cast<std::uint16_t>(kShdr));  // e_shentsize
+    wr16(elf, 48, 3);                                  // e_shnum
+    wr16(elf, 50, 0);                                  // e_shstrndx (unused by our parser here)
+    return elf;
+}
+
 }  // namespace
 
 TEST_CASE("loads a single code segment and reports the entry point") {
@@ -168,4 +209,26 @@ TEST_CASE("loaded image runs on the CPU") {
     }
     CHECK(regs.get(1) == 10);   // 4 + 3 + 2 + 1
     CHECK(regs.get(0) == 0);
+}
+
+TEST_CASE("symbol_named finds an exact-name symbol; misses return nullptr") {
+    Memory mem;
+    const std::vector<std::uint8_t> boot2(4, 0xAAu);   // a stub segment before the vectors
+    const std::vector<std::uint8_t> vectors{0x00, 0x00, 0x04, 0x20,   // SP = 0x20040000
+                                             0x01, 0x00, 0x00, 0x10};  // PC = 0x10000001
+    auto elf = build_elf(0x10000000u, {
+                                           {0x10000000u, boot2, static_cast<std::uint32_t>(boot2.size())},
+                                           {0x10000100u, vectors, static_cast<std::uint32_t>(vectors.size())},
+                                       });
+    elf = append_one_symbol(std::move(elf), "__vectors", 0x10000100u);
+
+    const ElfImage img = load_elf(mem, elf.data(), elf.size());
+    REQUIRE(img.ok);
+    REQUIRE(img.symbols.size() == 1);
+
+    const ElfSymbol* sym = img.symbol_named("__vectors");
+    REQUIRE(sym != nullptr);
+    CHECK(sym->value == 0x10000100u);
+    CHECK(img.symbol_named("__VECTOR_TABLE") == nullptr);
+    CHECK(img.symbol_named("nonexistent") == nullptr);
 }

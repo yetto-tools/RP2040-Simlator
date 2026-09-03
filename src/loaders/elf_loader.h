@@ -53,6 +53,13 @@ struct ElfImage {
     // nullptr if none - for resolving PC to a function name in traces/the
     // debugger. `addr` is matched with the Thumb bit masked off.
     const ElfSymbol* symbol_at(std::uint32_t addr) const;
+
+    // Exact-name lookup (first match), or nullptr. Used to find the real
+    // vector-table address by its conventional linker symbol name
+    // (`__vectors` et al. - see Simulator::load()'s from_entry=false path),
+    // since the lowest PT_LOAD segment isn't always where the vector table
+    // starts (e.g. a flash image with a boot2 stub segment before it).
+    const ElfSymbol* symbol_named(const std::string& name) const;
 };
 
 // Parse and load an ELF image held entirely in `data`.

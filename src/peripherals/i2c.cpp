@@ -41,7 +41,8 @@ void I2c::run_command() {
     tx_cmds_.pop_front();
 
     const std::uint8_t target = static_cast<std::uint8_t>(tar_ & 0x7Fu);
-    if (!slave_ || slave_addr_ != target) {
+    const bool addressed = slave_ && slave_addr_ == target;
+    if (!addressed) {
         tx_abrt_source_ |= kABRT_7B_ADDR_NOACK;
         raw_intr_ |= kINTR_TX_ABRT;
     } else if (cmd.is_read) {
@@ -57,7 +58,10 @@ void I2c::run_command() {
             raw_intr_ |= kINTR_TX_ABRT;
         }
     }
-    if (cmd.stop) raw_intr_ |= kINTR_STOP_DET;
+    if (cmd.stop) {
+        raw_intr_ |= kINTR_STOP_DET;
+        if (addressed && on_stop_) on_stop_();
+    }
     refresh_irq();
 }
 

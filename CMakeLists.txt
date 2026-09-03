@@ -106,6 +106,8 @@ add_library(rp2040_core STATIC
     src/peripherals/pwm.cpp
     src/peripherals/spi.cpp
     src/peripherals/usb.cpp
+    src/peripherals/st7789.cpp
+    src/peripherals/ssd1306.cpp
 )
 target_include_directories(rp2040_core PUBLIC include src)
 target_link_libraries(rp2040_core PRIVATE rp2040_project_options)
@@ -119,6 +121,16 @@ endif()
 add_executable(rp2040-sim src/main.cpp)
 target_link_libraries(rp2040-sim PRIVATE rp2040_core rp2040_project_options)
 rp2040_copy_runtime_dlls(rp2040-sim)
+
+# ----------------------------------------------------------------------------
+# Local web "virtual lab" backend (browser frontend lives in web/). Added
+# before tests/ so test_debug_session.cpp can link the rp2040_lab_debug
+# target it defines.
+# ----------------------------------------------------------------------------
+option(RP2040_BUILD_LAB_SERVER "Build the local web lab server (rp2040-lab-server)" ON)
+if(RP2040_BUILD_LAB_SERVER)
+    add_subdirectory(tools/lab_server)
+endif()
 
 # ----------------------------------------------------------------------------
 # Tests

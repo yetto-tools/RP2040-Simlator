@@ -155,7 +155,21 @@ ElfImage Simulator::load(const std::string& path, bool from_entry) {
         regs_.set_thumb((img.entry & 1u) != 0);
         regs_.set_pc(img.entry & ~std::uint32_t{1});
     } else {
-        cpu_.set_vtor(img.lowest_addr);
+        // The vector table doesn't have to start at the lowest loaded
+        // address: a flash image can have a boot-stage stub segment before
+        // it (e.g. the RP2040 SDK's 256-byte boot2), which real hardware's
+        // boot ROM consumes before ever reaching this vector table itself.
+        // Prefer the conventional linker-provided symbol for it when
+        // present; only fall back to lowest_addr for images without one
+        // (e.g. this project's own hand-written freestanding test fixtures).
+        std::uint32_t vtor = img.lowest_addr;
+        for (const char* name : {"__vectors", "__VECTOR_TABLE", "__Vectors"}) {
+            if (const ElfSymbol* sym = img.symbol_named(name)) {
+                vtor = sym->value & ~std::uint32_t{1};
+                break;
+            }
+        }
+        cpu_.set_vtor(vtor);
         cpu_.reset();
     }
     return img;

@@ -255,3 +255,52 @@ TEST_CASE("attach_peripheral rejects overlap and out-of-range mappings") {
     CHECK_FALSE(mem.attach_peripheral(kRam, 0x1000u, &b));                        // not register space
     CHECK(mem.attach_peripheral(rp2040::kUart0Base, 0x1000u, &b));               // fine
 }
+
+// RP2040 atomic register aliasing (datasheet 2.1.3): a write to
+// base+0x1000/0x2000/0x3000 XORs/SETs/CLEARs the register at `base` instead
+// of storing directly - the address decoding pico-sdk's hw_xor_bits() /
+// hw_set_bits() / hw_clear_bits() rely on (found via a real pico-sdk boot
+// faulting on exactly this - see BACKLOG.md P10.3).
+TEST_CASE("atomic register aliasing: XOR/SET/CLEAR writes via address offset") {
+    Memory mem;
+    FakePeripheral p;
+    REQUIRE(mem.attach_peripheral(rp2040::kGpioBase, 0x1000u, &p));
+    const std::uint32_t reg = rp2040::kGpioBase + 0x10u;
+
+    REQUIRE(mem.write_word(reg, 0b1100u) == BusStatus::Ok);
+
+    SUBCASE("XOR alias (+0x1000)") {
+        CHECK(mem.write_word(reg + 0x1000u, 0b1010u) == BusStatus::Ok);
+        CHECK(mem.read_word(reg).value == 0b0110u);
+    }
+    SUBCASE("SET alias (+0x2000)") {
+        CHECK(mem.write_word(reg + 0x2000u, 0b0010u) == BusStatus::Ok);
+        CHECK(mem.read_word(reg).value == 0b1110u);
+    }
+    SUBCASE("CLEAR alias (+0x3000)") {
+        CHECK(mem.write_word(reg + 0x3000u, 0b0100u) == BusStatus::Ok);
+        CHECK(mem.read_word(reg).value == 0b1000u);
+    }
+}
+
+TEST_CASE("atomic register aliasing addresses the peripheral's whole 16 KiB slot") {
+    Memory mem;
+    FakePeripheral p;
+    REQUIRE(mem.attach_peripheral(rp2040::kGpioBase, 0x1000u, &p));
+
+    // Real peripheral base addresses are 0x4000-aligned specifically so the
+    // three alias windows (+0x1000/+0x2000/+0x3000) land right after the
+    // peripheral's own 0x1000-sized register file, still addressing that
+    // same peripheral - not a separate, unmapped region.
+    REQUIRE(mem.write_word(rp2040::kGpioBase, 0u) == BusStatus::Ok);
+    CHECK(mem.write_word(rp2040::kGpioBase + 0x2000u, 0xFFu) == BusStatus::Ok);  // SET alias, offset 0
+    CHECK(mem.read_word(rp2040::kGpioBase).value == 0xFFu);
+}
+
+TEST_CASE("atomic register aliasing to an unmapped base still faults") {
+    Memory mem;
+    // Nothing attached anywhere - the alias address math resolves to a base
+    // address with no peripheral there, which must still be InvalidAddress
+    // rather than silently succeeding.
+    CHECK(mem.write_word(rp2040::kUart0Base + 0x1000u, 1u) == BusStatus::InvalidAddress);
+}

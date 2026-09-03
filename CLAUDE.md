@@ -50,8 +50,10 @@ When implementing a feature, ask:
 - Thesis quality: peer-reviewable
 
 ### 5. NO EXTERNAL DEPENDENCIES FOR CORE
-- Core simulator must be self-contained (C++17 minimum)
-- Optional: Qt/wxWidgets for GUI (separate from core)
+- Core simulator (`rp2040_core`) must be self-contained (C++17 minimum)
+- Optional tools may take on dependencies as long as they stay outside
+  `rp2040_core` - e.g. `tools/lab_server` (vendored httplib.h/json.hpp) and
+  `web/` (npm), the local browser-based "virtual lab" front-end
 - Must compile with arm-none-eabi-gcc and gdb
 
 ---
@@ -208,6 +210,9 @@ When asked to implement something, I should confirm:
 (per-core NVIC), loaders (ELF + UF2), and the debug tooling (GDB stub, PIO
 debugger + disassembler, profiler) are implemented and unit-tested (36 suites,
 green under `-Werror`). `BACKLOG.md` has the authoritative per-feature status.
+A local browser-based "virtual lab" (`tools/lab_server` + `web/`) was added
+2026-08-31 as a second front-end alongside the CLI - see `BACKLOG.md`'s lab
+server phase and `ARCHITECTURE.md` "Local web lab".
 
 **Next**: hardware-trace validation (P8.3, needs physical Pico boards),
 optional USB, and feeding the derived clock-tree frequency into peripheral
@@ -367,7 +372,10 @@ As development progresses, track:
 ## Open Questions for Author
 
 1. **MicroPython Support**: Just bytecode, or full runtime?
-2. **GUI**: CLI-only initially, or include Qt visualizer?
+2. **GUI**: answered 2026-08-31 - a local browser-based "virtual lab"
+   (`tools/lab_server` + `web/`) is now in scope, v1 = code editor with
+   breakpoints + GPIO pin panel; a full drag-and-drop circuit editor stays
+   post-tesis (see `BACKLOG.md`)
 3. **USB**: Full support, or skip for Phase 1?
 4. **Thesis Timeline**: 12 weeks? Longer?
 5. **Hardware Access**: Do you have 2× Pico boards + debugger + oscilloscope?

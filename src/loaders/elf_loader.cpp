@@ -139,6 +139,13 @@ const ElfSymbol* ElfImage::symbol_at(std::uint32_t addr) const {
     return best;
 }
 
+const ElfSymbol* ElfImage::symbol_named(const std::string& name) const {
+    for (const ElfSymbol& s : symbols) {
+        if (s.name == name) return &s;
+    }
+    return nullptr;
+}
+
 ElfImage load_elf(Memory& mem, const std::uint8_t* data, std::size_t size) {
     if (data == nullptr || size < kElfHeaderSize) return fail("file too small for an ELF header");
     if (std::memcmp(data, "\x7F""ELF", 4) != 0) return fail("bad ELF magic");

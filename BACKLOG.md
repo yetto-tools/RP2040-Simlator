@@ -963,6 +963,276 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Effort**: 40 hours (outside this schedule)
 - **Priority**: CRITICAL
 
+#### P10.1: Local Web Lab - Backend (`tools/lab_server`)  [DONE]
+- [x] `DebugSession` (`debug_session.{h,cpp}`): JSON-friendly wrapper around
+      one `Simulator`, near-copy of `src/debuggers/gdb_stub.cpp`'s `run()`
+      breakpoint-checking pattern - PC breakpoint `std::set`, watchpoint hits
+      via `Memory::take_watchpoint_hit()` - but running the continue loop on
+      a background `std::thread` (batches of 2000 steps per mutex lock) so
+      `/state` polling stays responsive while firmware runs
+- [x] `Compiler` (`compiler.{h,cpp}`): spawns `arm-none-eabi-gcc` via a real
+      argv vector (`_spawnv`/`posix_spawn` - no shell, so no `cmd.exe`
+      quoting bugs), same flags/linker script as `tests/fixtures/firmware.ld`;
+      also runs `arm-none-eabi-objdump -dl` and parses its interleaved
+      source/disassembly output into a source-line -> PC-address map (not a
+      full DWARF `.debug_line` parser - good enough for the single-file v1
+      firmware model) so the editor's gutter clicks can set real breakpoints
+- [x] `main.cpp`: cpp-httplib server, routes `/health`, `/compile`, `/load`,
+      `/run`, `/pause`, `/step`, `/state`, `/breakpoints`,
+      `/gpio/:pin/external`, `/uart/:n/feed`; base64 for ELF/UF2 transport
+- [x] v1 firmware model matches `tests/fixtures/sum.c`: freestanding C with a
+      `_start`, no libc, no pico-sdk - real pico-sdk compilation is a
+      separate `mode`, added in P10.3
+- [x] Vendored `cpp-httplib` (v0.54.1) and `nlohmann/json` (v3.12.0) under
+      `tools/lab_server/vendor/` (MIT, single-header, same pattern as
+      `tests/vendor/doctest.h`) - isolated to this target; `rp2040_core`
+      stays dependency-free
+- **Tests**: `tests/unit/test_debug_session.cpp` (6 cases: load/error, step,
+      breakpoint hit, pause mid-run, breakpoint removal) plus a manual
+      `curl`-based `/compile` -> `/load` -> `/run` -> `/state` smoke test
+- **Design**: see `ARCHITECTURE.md` "Local web lab"
+- **Files**: `tools/lab_server/{main,debug_session,compiler}.{h,cpp}`,
+      `tools/lab_server/vendor/{httplib.h,json.hpp,README.md}`,
+      `tools/lab_server/CMakeLists.txt`
+- **Effort**: 12 hours
+- **Priority**: MEDIUM (explicit scope addition, 2026-08-31 - not part of
+      the original thesis plan; see `CONTEXT.md` Decision 6)
+- **Dependencies**: P1.1, P1.3, P7.4 (watchpoint mechanism reused as-is)
+
+#### P10.2: Local Web Lab - Frontend (`web/`)  [DONE]
+- [x] Vite + React + TypeScript scaffold, `@monaco-editor/react` for the
+      code editor
+- [x] `Editor.tsx`: Monaco editor with real gutter breakpoints - glyph-margin
+      clicks map source line -> PC address via the backend's objdump-derived
+      line map, wired to `POST /breakpoints`; renders breakpoint dots and a
+      current-PC line highlight. `automaticLayout: true` plus one deferred
+      `editor.layout()` call on mount work around a real Monaco-in-React
+      sizing bug (verified live in-browser: Monaco's first layout pass can
+      race the surrounding CSS grid and lock in a near-zero size that its own
+      resize observer then never corrects, since the *container* never
+      resizes afterward - only Monaco's stale internal measurement is wrong)
+- [x] `Console.tsx`: UART0/1 output stream (polled from `/state`) + an input
+      box wired to `/uart/:n/feed`
+- [x] `PinPanel.tsx`: all 30 GPIO rows (level/direction/function), clickable
+      when a pin is configured as input, wired to `/gpio/:pin/external`
+- [x] `DebugToolbar.tsx` + `RegisterView.tsx`: compile/load/upload, run/
+      pause/step controls, register dump, current PC/status
+- [x] `api.ts`: typed `fetch()` client for every backend route
+- **Verified live in-browser** (not just typechecked): compile -> load ->
+      set a gutter breakpoint -> run -> execution stops exactly there with
+      correct PC/registers -> step advances one instruction -> PinPanel
+      toggle reflected in `/state`. Caught and fixed two real bugs this way
+      that a type-check alone would have missed: (1) a duplicated
+      `Access-Control-Allow-Origin` header on CORS preflight responses
+      (`set_default_headers` + an explicit `Options` handler both setting
+      it) that Chrome silently rejects for every POST route while GET
+      polling kept working, masking the failure; (2) the Monaco sizing race
+      above
+- **Design**: see `ARCHITECTURE.md` "Local web lab"
+- **Files**: `web/src/{App.tsx,api.ts}`, `web/src/components/*.tsx`
+- **Effort**: 10 hours
+- **Priority**: MEDIUM (same scope addition as P10.1)
+- **Dependencies**: P10.1
+
+#### P10.3: Local Web Lab - pico-sdk Compile Support  [DONE]
+- [x] `/compile` gains a `mode` field (`freestanding` default, matching
+      P10.1 unchanged; `pico_sdk` new) routing to a real pico-sdk CMake+Ninja
+      build instead of a bare `arm-none-eabi-gcc` invocation
+- [x] `compile_pico_sdk_firmware()` (`compiler.{h,cpp}`): a **persistent**
+      project/build directory pair (`<temp>/rp2040lab_pico_{project,build}`,
+      not a fresh one per request like P10.1's freestanding path) so
+      Ninja's incremental build stays fast after the first compile - pico-sdk
+      builds its own core libraries (`pico_runtime`, `hardware_gpio`, ...)
+      from scratch the first time (~10-20s observed), but a source-only
+      change afterward rebuilds in under a second. `PICO_SDK_PATH`/bundled
+      CMake+Ninja are auto-detected in `CMakeLists.txt` the same
+      graceful-degradation way `ARM_NONE_EABI_GCC` already was (matches this
+      machine's `~/.pico-sdk/{sdk,cmake,ninja,toolchain}/<version>/` layout,
+      the official pico-vscode extension's install convention)
+- [x] Fixed `CMakeLists.txt` template: one `main.c`, `pico_stdlib` +
+      the `hardware_*` libraries this simulator implements
+      (pwm/adc/dma/i2c/spi/rtc/watchdog), `pico_enable_stdio_uart(1)` /
+      `..._usb(0)` so `printf()` reaches the existing UART0 console - not a
+      general multi-file CMake project (that's the still-deferred item
+      below)
+- [x] `PICO_DEFAULT_{BIT_OPS,DIVIDER,DOUBLE,FLOAT,MEM_OPS}_IMPL` forced to
+      each library's `compiler` (libgcc) variant instead of pico-sdk's
+      default bootrom-lookup variant, and
+      `PICO_RUNTIME_SKIP_INIT_{BOOTROM_RESET,PER_CORE_BOOTROM_RESET}` set -
+      this simulator's ROM is an empty 16 KiB block (no proprietary,
+      unredistributable Raspberry Pi bootrom image - see `ARCHITECTURE.md`
+      "Local web lab"), so every pico-sdk code path that looks up an
+      optimized routine there via `rom_func_lookup()` must be steered to its
+      documented non-ROM fallback instead. An approximation worth being
+      explicit about: real hardware's bootrom-provided bit-ops/divide/float
+      routines are faster than libgcc's; firmware built through this lab
+      trades a little runtime speed for actually booting in simulation
+- **Known characteristic, not a bug**: `sleep_ms()`/busy-wait delays feel
+      slow in the browser because this simulator is cycle-accurate but not
+      wall-clock-synced (CLAUDE.md: accuracy over speed) - `--profile`
+      against the example blink+printf firmware measured ~3.5M retired
+      instructions/sec, with 99.6% of them spent spinning in `sleep_ms`'s
+      timer-polling loop alone, so a `sleep_ms(500)` call takes several real
+      seconds rather than 500ms. `DebugSession::run_loop()` adds no
+      meaningful overhead on top of that ceiling (confirmed via the same
+      profiling) - the frontend's `DebugToolbar.tsx` now says so explicitly
+      (a note next to Run while running) rather than leaving it looking
+      broken. Raw interpreter throughput is a separate, real optimization
+      target (`BACKLOG.md` P8.5 "Performance Benchmarks") if ever revisited
+- **Three real core bugs found and fixed while getting an actual pico-sdk
+  binary to boot** (not hypothetical - each reproduced via a live
+  `arm-none-eabi-gdb` backtrace against the simulator, see git history for
+  the session this landed in):
+  - `Simulator::load(path, from_entry=false)` used the lowest loaded PT_LOAD
+    segment's address as VTOR, which is wrong whenever a flash image has a
+    boot-stage stub segment before its real vector table (pico-sdk's 256-byte
+    `.boot2`) - it now prefers the ELF's `__vectors`/`__VECTOR_TABLE`/
+    `__Vectors` symbol when present (`elf_loader.{h,cpp}`'s new
+    `ElfImage::symbol_named()`, `simulator.cpp`). General ELF-loading fix,
+    not lab-server-specific - also fixes `rp2040-sim`'s own CLI boot path for
+    any similarly-laid-out flash image
+  - `DebugSession::step_locked()` didn't handle `ExecStatus::Breakpoint`
+    from a *real* `bkpt` instruction in the executed code (as opposed to
+    this session's own address-matched breakpoints) - it silently continued
+    past it into whatever memory followed, which for pico-sdk's default
+    "unhandled interrupt" ISR stubs meant executing garbage data as
+    instructions. Now halts with `RunStatus::Breakpoint`, matching
+    `gdb_stub.cpp`'s already-correct handling of the same `ExecStatus`
+  - `Memory::write_scalar()` didn't implement RP2040's atomic register
+    aliasing (datasheet 2.1.3: a write to a peripheral's base address +
+    0x1000/0x2000/0x3000 XORs/SETs/CLEARs the register at the base instead
+    of storing directly) - `hw_set_bits()`/`hw_clear_bits()`/`hw_xor_bits()`,
+    used throughout every pico-sdk peripheral driver, compile straight to
+    this and faulted immediately. Implemented in `memory.cpp` as a
+    read-modify-write fallback when a direct address match fails
+- **Tests**: `tests/unit/test_memory.cpp` (atomic aliasing: XOR/SET/CLEAR,
+  the 16 KiB-slot addressing model, faults on an unmapped alias base),
+  `tests/unit/test_debug_session.cpp` ("a live bkpt instruction halts a
+  background run"), `tests/unit/test_elf_loader.cpp` (`symbol_named()`)
+- **Verified live**: compiled the example below through the actual server,
+  loaded with `fromEntry:false`, ran it in-browser - reached `main()`,
+  `printf()` output appeared in the UART console, GP25 correctly showed
+  `driving:true, funcsel:5` (real `gpio_init()` sets the pin's IO_BANK0
+  function to SIO, unlike P10.2's hand-written freestanding demo firmware,
+  which pokes `SIO_GPIO_OE` directly and never sets it - a small honest gap
+  in that demo, not in the simulator)
+- **Files**: `tools/lab_server/compiler.{h,cpp}`, `tools/lab_server/main.cpp`,
+  `tools/lab_server/CMakeLists.txt`, `src/loaders/elf_loader.{h,cpp}`,
+  `src/simulator.cpp`, `tools/lab_server/debug_session.cpp`,
+  `src/core/memory.cpp`, `web/src/{App.tsx,api.ts}`,
+  `web/src/components/DebugToolbar.tsx`
+- **Effort**: 8 hours
+- **Priority**: MEDIUM (same scope addition as P10.1/P10.2)
+- **Dependencies**: P10.1, P10.2
+
+#### P10.4: Local Web Lab - Multi-File Projects  [DONE]
+- [x] `/compile`'s `source` field replaced by `files: [{name, content}]`
+      (both modes) - flat (no subdirectories), `.c`/`.h` only, matching this
+      item's own original framing ("not a general multi-file CMake
+      project"). `compiler.h`'s `LineAddr` gained a `file` field (objdump's
+      `-dl` markers already carried the source path per entry; the parser
+      just wasn't keeping it), so breakpoints resolve per-(file, line), not
+      just per-line
+- [x] Freestanding mode (`compile_firmware()`): writes the whole file set
+      into a fresh per-request subdirectory (real names, not the old
+      `rp2040lab_src_<id>.c`), invokes gcc with every `.c` file as a source
+      argument - headers resolve the same way `#include "..."` does in any
+      multi-TU C build, no extra step needed
+- [x] pico-sdk mode (`compile_pico_sdk_firmware()`): `CMakeLists.txt`'s
+      `add_executable(labfw main.c)` became `file(GLOB SOURCES
+      CONFIGURE_DEPENDS *.c)` + `add_executable(labfw ${SOURCES})` -
+      `CONFIGURE_DEPENDS` (CMake ≥3.12) makes `cmake --build` notice when a
+      file was added/removed and reconfigure automatically, so the
+      persistent build dir (P10.3's speed trick) still works with a
+      changing file set. Also deletes any `*.c`/`*.h` left in the project
+      dir from a previous compile that isn't in the current file set before
+      writing - otherwise a file the user deleted client-side would linger
+      and stay linked. Verified directly: compiled a 2-file project, then
+      recompiled with one file removed while the other still referenced
+      it - correctly failed to link (confirms the stale copy was actually
+      gone, not just hidden from the editor)
+- [x] `Editor.tsx` reworked from controlled `value`/`onChange` (one Monaco
+      model, implicit) to imperative multi-model management - one
+      `monaco.editor.ITextModel` per file, created/disposed/synced against
+      `files` in an effect, `editor.setModel()` swaps which one is visible.
+      A model's `setValue()` only fires when its content actually differs
+      from the incoming prop, so this editor's own edits (which round-trip
+      back through React state unchanged) never reset the cursor/undo stack
+      mid-keystroke - only genuinely external changes (mode switch,
+      localStorage restore) do
+- [x] New `FileTabs.tsx`: tab strip (filename + × per tab, click to open,
+      double-click to rename, trailing "+" to add) - `window.prompt()`/
+      `window.alert()` for naming, the simplest reasonable v1 UX rather than
+      a new modal component
+- [x] Whole project (mode + all files + active tab) auto-persisted to
+      `localStorage` (`rp2040lab.project.v1`, ~500ms debounced), restored on
+      load - one working set, not several named projects (that's a natural
+      v2 if ever wanted). Verified live: added a file, wrote a cross-file
+      function call, reloaded the page, both files and the active tab came
+      back exactly as left
+- **Real bug found writing the frontend, not just this feature**: Monaco's
+  `onMount` fires exactly once, but `@monaco-editor/react` loads Monaco
+  itself asynchronously - a model-sync effect that only runs on `files`/
+  `activeFile` changes can execute *before* `onMount` ever fires (editor ref
+  still null, effect no-ops), with nothing left to re-trigger it once the
+  editor is finally ready, since refs alone don't cause a re-render. Fixed
+  by calling the same sync logic once directly from `onMount`, reading
+  through refs kept current every render (the established pattern from this
+  file's earlier stale-closure fix) rather than depending on the effect
+  re-running.
+- **Tests**: `ctest` unaffected (no `rp2040_core` changes); verified via the
+  existing curl/node smoke-test pattern (2-file freestanding compile with a
+  cross-file call, 2-file pico-sdk compile, stale-file-removal recompile)
+  and a full browser pass (tabs, cross-file breakpoint, reload persistence).
+- **Files**: `tools/lab_server/compiler.{h,cpp}`, `tools/lab_server/main.cpp`,
+  `web/src/api.ts`, `web/src/App.tsx`, `web/src/components/Editor.tsx`,
+  `web/src/components/FileTabs.tsx` (new)
+- **Effort**: 6 hours
+- **Priority**: MEDIUM (same scope addition as P10.1-P10.3)
+- **Dependencies**: P10.1, P10.2, P10.3
+
+#### P10.6: Local Web Lab - Drag-and-drop circuit editor  [DONE]
+- [x] Wokwi-style component palette + visual wiring on `@xyflow/react` -
+      originally listed under P10.5 as explicitly deferred at
+      scope-decision time (2026-08-31, `CONTEXT.md` Decision 6); the author
+      asked for it anyway and it was built incrementally, each component
+      verified end-to-end against real firmware before the next was added
+- [x] Components: LED, Button, Potentiometer (`Adc::set_input` via a new
+      `POST /adc/:channel/external`), Buzzer (single-GPIO); ST7789 and
+      ILI9341 SPI TFTs and SSD1306 I2C OLED (multi-pin virtual devices,
+      dynamically attached/detached against whichever SPI/I2C instance the
+      wiring implies - see `ARCHITECTURE.md` §12.6). ILI9341 shares
+      ST7789's command decoder (same MIPI DBI Type C opcodes, different
+      default resolution) rather than duplicating it.
+- [x] Pico board node with all 30 GPIO handles + power/control pins (3V3,
+      3V3_EN, VBUS, VSYS, GND - structural only)
+- [x] Polish pass (frontend-only): non-overlapping new-node placement,
+      invalid-wiring/attach-slot-conflict feedback, free-text canvas notes,
+      a rotary-knob potentiometer visual, handle/selection theming - see
+      `ARCHITECTURE.md` §12.6 "Polish pass"
+- **Design**: see `ARCHITECTURE.md` §12.6
+- **Files**: `src/peripherals/st7789.{h,cpp}`, `ili9341.h`, `ssd1306.{h,cpp}`,
+      `src/peripherals/i2c.{h,cpp}` (`on_stop()` hook), `tools/lab_server/
+      debug_session.{h,cpp}`, `main.cpp`, `web/src/components/circuit/*`,
+      `web/src/picoPinout.ts`, `useCircuitWiring.ts`, `web/src/api.ts`
+- **Priority**: was LOW (nice-to-have); promoted by explicit author request
+- **Dependencies**: P10.1, P10.2, P10.3, P10.4
+
+#### P10.5: Local Web Lab - Still Deferred  [NOT STARTED]
+- [ ] `.debug_line`-accurate breakpoint mapping (P10.1's objdump-output
+      parsing is good enough for this project's flat firmware model but not
+      a real DWARF reader - heavy inlining could still produce a source
+      line with no matching disassembly line)
+- [ ] Named, multiple saved projects (P10.4 auto-persists one working set
+      per browser, not a project picker/manager)
+- [ ] Boot ROM modelling (would remove the need for P10.3's
+      `PICO_RUNTIME_SKIP_INIT_BOOTROM_RESET`/compiler-impl workarounds, but
+      the real RP2040 bootrom is proprietary and unredistributable - at best
+      a from-scratch reimplementation of its documented behavior, a
+      substantial project on its own)
+- **Priority**: LOW (nice-to-have, not blocking the thesis)
+- **Dependencies**: P10.1, P10.2, P10.3, P10.4
+
 ---
 
 ## Weekly Sprints
