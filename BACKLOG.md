@@ -387,30 +387,6 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Tests**: `tests/unit/test_pwm.cpp` (6 cases)
 - **Design**: RP2040 datasheet 4.5
 
-#### P3.3-OLD: PWM Controller (original checklist)
-- [ ] 4 timer slices
-- [ ] 2 channels per slice (A, B)
-- [ ] 16-bit counter
-- [ ] Prescaler (divide by 2^N)
-- [ ] Period & compare registers
-- [ ] PWM mode (with duty cycle)
-- [ ] One-shot mode
-- [ ] Auto-reload
-- **Tests**: 20+ timer tests
-- **Effort**: 20 hours
-- **Priority**: HIGH
-- **Dependencies**: P1.3
-
-#### P3.4: Timer Interrupts
-- [ ] Compare match interrupt
-- [ ] Counter overflow interrupt
-- [ ] Period reached interrupt
-- [ ] NVIC integration
-- **Tests**: 10+ interrupt tests
-- **Effort**: 10 hours
-- **Priority**: HIGH
-- **Dependencies**: P3.3, P1.4
-
 ---
 
 ### PHASE 4: UART + SPI (Week 7)
