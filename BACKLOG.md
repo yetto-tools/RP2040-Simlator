@@ -172,8 +172,18 @@ Week 12:    PHASE 9 - Documentation & Release
       each core's NVIC then decides independently (per-core enable + priority).
       Verified: a TIMER alarm is taken by core1 while core0 (IRQ disabled)
       ignores it.
+- [x] SIO integer divider (2.3.1.6): UDIVIDEND/UDIVISOR/SDIVIDEND/SDIVISOR/
+      QUOTIENT/REMAINDER/CSR at 0x060-0x078, shared (not banked per core) like
+      real hardware. 8 clk_sys-cycle latency paced by `on_cycles()`, CSR.READY
+      clear for the duration, CSR.DIRTY clears on a QUOTIENT read (not
+      REMAINDER, so context save/restore can preserve it), divide-by-zero
+      gives QUOTIENT=0xFFFFFFFF/REMAINDER=DIVIDEND in both sign modes. Found
+      missing while debugging a real pico-sdk-style firmware (picoOS) that
+      busy-waits on CSR.READY with IRQs masked in its decimal-print routine -
+      previously that loop spun forever since bus_read() fell through to its
+      `default: return 0` for these offsets.
 - [ ] Exact instruction-interleave timing (round-robin is a simplification)
-- **Tests**: `tests/unit/test_multicore.cpp` (5 cases)
+- **Tests**: `tests/unit/test_multicore.cpp` (11 cases)
 - **Files**: `src/core/{scs,interrupt_controller}.h`, all `src/peripherals/*`
 - **Design**: RP2040 datasheet 2.3, 2.4
 

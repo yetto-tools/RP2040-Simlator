@@ -191,6 +191,7 @@ ExecStatus Simulator::step() {
         pio0_regs_.poll_fdebug();
         pio1_regs_.poll_fdebug();
     }
+    sio_.on_cycles(spent);
     timer_.on_cycles(spent);
     dma_.on_cycles(spent);
     adc_.on_cycles(spent);

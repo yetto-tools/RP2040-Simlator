@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 
+#include "core/memory.h"
+#include "peripherals/gpio.h"
 #include "peripherals/sio.h"
 #include "peripherals/timer.h"
 #include "simulator.h"
@@ -13,7 +15,20 @@ using namespace rp2040;
 
 namespace {
 constexpr std::uint32_t kSio = Sio::kBase;
-}
+
+// SIO in isolation (no CPU/scheduler), so on_cycles() can be driven directly
+// instead of through Simulator::step()'s instruction-timed loop.
+struct SioFix {
+    Gpio gpio;
+    Memory mem;
+    Sio sio{gpio};
+    SioFix() { REQUIRE(sio.attach(mem)); }
+    std::uint32_t rd(std::uint32_t a) { return mem.read_word(a).value; }
+    void wr(std::uint32_t a, std::uint32_t v) {
+        REQUIRE(mem.write_word(a, v) == BusStatus::Ok);
+    }
+};
+}  // namespace
 
 TEST_CASE("SIO mailbox: core 0 pushes, core 1 pops (and vice versa)") {
     Simulator sim;
@@ -114,4 +129,67 @@ TEST_CASE("per-core CPUID reflects the active core") {
     // A harness read sees the last-set active core (0 after a step()).
     sim.step();
     CHECK(sim.memory().read_word(kSio + 0x000u).value == 0u);
+}
+
+// SIO integer divider (datasheet 2.3.1.6). picoOS's uart_putu32 (and hence
+// every shell command that prints a number, e.g. "suma 7 3") busy-waits on
+// CSR.READY with interrupts masked; before this peripheral existed, READY
+// never went high and the CPU spun forever.
+TEST_CASE_FIXTURE(SioFix, "SIO divider: unsigned divide takes 8 clk_sys cycles") {
+    wr(Sio::kBase + 0x060u, 100u);   // UDIVIDEND
+    wr(Sio::kBase + 0x064u, 7u);     // UDIVISOR - (re)starts the calculation
+    CHECK((rd(Sio::kBase + 0x078u) & 1u) == 0u);   // CSR.READY clear mid-flight
+    sio.on_cycles(7);
+    CHECK((rd(Sio::kBase + 0x078u) & 1u) == 0u);   // still not ready after 7 cycles
+    sio.on_cycles(1);
+    CHECK((rd(Sio::kBase + 0x078u) & 1u) != 0u);   // ready on the 8th
+    CHECK(rd(Sio::kBase + 0x070u) == 14u);         // QUOTIENT
+    CHECK(rd(Sio::kBase + 0x074u) == 2u);          // REMAINDER
+}
+
+TEST_CASE_FIXTURE(SioFix, "SIO divider: signed divide truncates toward zero") {
+    wr(Sio::kBase + 0x068u, static_cast<std::uint32_t>(-7));  // SDIVIDEND
+    wr(Sio::kBase + 0x06Cu, 2u);                                // SDIVISOR
+    sio.on_cycles(8);
+    CHECK(static_cast<std::int32_t>(rd(Sio::kBase + 0x070u)) == -3);
+    CHECK(static_cast<std::int32_t>(rd(Sio::kBase + 0x074u)) == -1);
+}
+
+TEST_CASE_FIXTURE(SioFix, "SIO divider: INT32_MIN / -1 wraps instead of trapping") {
+    wr(Sio::kBase + 0x068u, 0x80000000u);   // INT32_MIN
+    wr(Sio::kBase + 0x06Cu, 0xFFFFFFFFu);   // -1
+    sio.on_cycles(8);
+    CHECK(rd(Sio::kBase + 0x070u) == 0x80000000u);
+    CHECK(rd(Sio::kBase + 0x074u) == 0u);
+}
+
+TEST_CASE_FIXTURE(SioFix, "SIO divider: divide by zero sets QUOTIENT=-1, REMAINDER=DIVIDEND") {
+    wr(Sio::kBase + 0x060u, 42u);
+    wr(Sio::kBase + 0x064u, 0u);
+    sio.on_cycles(8);
+    CHECK(rd(Sio::kBase + 0x070u) == 0xFFFFFFFFu);
+    CHECK(rd(Sio::kBase + 0x074u) == 42u);
+}
+
+TEST_CASE_FIXTURE(SioFix, "SIO divider: DIRTY clears on QUOTIENT read, survives REMAINDER read") {
+    wr(Sio::kBase + 0x060u, 9u);
+    wr(Sio::kBase + 0x064u, 2u);
+    sio.on_cycles(8);
+    CHECK((rd(Sio::kBase + 0x078u) & 2u) != 0u);   // DIRTY set by the writes
+    (void)rd(Sio::kBase + 0x074u);                 // REMAINDER read leaves it set
+    CHECK((rd(Sio::kBase + 0x078u) & 2u) != 0u);
+    (void)rd(Sio::kBase + 0x070u);                 // QUOTIENT read clears it
+    CHECK((rd(Sio::kBase + 0x078u) & 2u) == 0u);
+}
+
+TEST_CASE_FIXTURE(SioFix, "SIO divider: a write mid-flight restarts the 8-cycle countdown") {
+    wr(Sio::kBase + 0x060u, 100u);
+    wr(Sio::kBase + 0x064u, 7u);
+    sio.on_cycles(6);
+    wr(Sio::kBase + 0x064u, 3u);   // new divisor before the first finished
+    sio.on_cycles(6);
+    CHECK((rd(Sio::kBase + 0x078u) & 1u) == 0u);   // still not ready: restarted at 6
+    sio.on_cycles(2);
+    CHECK(rd(Sio::kBase + 0x070u) == 33u);         // 100 / 3
+    CHECK(rd(Sio::kBase + 0x074u) == 1u);
 }

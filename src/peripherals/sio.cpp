@@ -1,5 +1,7 @@
 #include "peripherals/sio.h"
 
+#include <cstdint>
+
 namespace rp2040 {
 
 namespace {
@@ -10,13 +12,62 @@ enum : std::uint32_t {
     kGPIO_OUT    = 0x010, kGPIO_OUT_SET = 0x014, kGPIO_OUT_CLR = 0x018, kGPIO_OUT_XOR = 0x01C,
     kGPIO_OE     = 0x020, kGPIO_OE_SET  = 0x024, kGPIO_OE_CLR  = 0x028, kGPIO_OE_XOR  = 0x02C,
     kFIFO_ST     = 0x050, kFIFO_WR = 0x054, kFIFO_RD = 0x058,
+    kDIV_UDIVIDEND = 0x060, kDIV_UDIVISOR = 0x064,
+    kDIV_SDIVIDEND = 0x068, kDIV_SDIVISOR = 0x06C,
+    kDIV_QUOTIENT  = 0x070, kDIV_REMAINDER = 0x074, kDIV_CSR = 0x078,
     kSPINLOCK0   = 0x100,   // .. 0x17C
 };
 constexpr std::uint32_t kFIFO_ST_VLD = 1u << 0;
 constexpr std::uint32_t kFIFO_ST_RDY = 1u << 1;
 constexpr std::uint32_t kFIFO_ST_WOF = 1u << 2;
 constexpr std::uint32_t kFIFO_ST_ROE = 1u << 3;
+constexpr std::uint32_t kDIV_CSR_READY = 1u << 0;
+constexpr std::uint32_t kDIV_CSR_DIRTY = 1u << 1;
 }  // namespace
+
+void Sio::start_divide(bool is_signed, bool dividend, std::uint32_t value) {
+    if (dividend) div_dividend_ = value; else div_divisor_ = value;
+    div_signed_ = is_signed;
+    div_ready_ = false;
+    div_dirty_ = true;
+    div_countdown_ = kDivLatencyCycles;
+}
+
+void Sio::finish_divide() {
+    if (div_divisor_ == 0) {
+        // Datasheet 2.3.1.6: divide-by-zero is well-defined hardware
+        // behaviour, not a trap - same result shape in both sign modes.
+        div_quotient_ = 0xFFFFFFFFu;
+        div_remainder_ = div_dividend_;
+    } else if (div_signed_) {
+        const std::int32_t a = static_cast<std::int32_t>(div_dividend_);
+        const std::int32_t b = static_cast<std::int32_t>(div_divisor_);
+        // INT32_MIN / -1 overflows a 32-bit signed quotient; the divider
+        // just wraps rather than trapping, so match that instead of
+        // invoking UB in the host's division.
+        if (a == INT32_MIN && b == -1) {
+            div_quotient_ = static_cast<std::uint32_t>(INT32_MIN);
+            div_remainder_ = 0;
+        } else {
+            div_quotient_ = static_cast<std::uint32_t>(a / b);
+            div_remainder_ = static_cast<std::uint32_t>(a % b);
+        }
+    } else {
+        div_quotient_ = div_dividend_ / div_divisor_;
+        div_remainder_ = div_dividend_ % div_divisor_;
+    }
+    div_ready_ = true;
+}
+
+void Sio::on_cycles(std::uint64_t sys_cycles) {
+    if (div_countdown_ == 0) return;
+    if (sys_cycles >= div_countdown_) {
+        div_countdown_ = 0;
+        finish_divide();
+    } else {
+        div_countdown_ -= static_cast<std::uint32_t>(sys_cycles);
+    }
+}
 
 void Sio::refresh_fifo_irqs() {
     if (cpu0_ != nullptr) {
@@ -87,6 +138,16 @@ BusResult<std::uint32_t> Sio::bus_read(std::uint32_t offset, BusWidth) {
             refresh_fifo_irqs();
             return {v, BusStatus::Ok};
         }
+        // Reading QUOTIENT clears DIRTY (2.3.1.6): software reads REMAINDER
+        // first if it needs DIRTY to survive both reads (context save/restore).
+        case kDIV_QUOTIENT:  div_dirty_ = false; return {div_quotient_, BusStatus::Ok};
+        case kDIV_REMAINDER: return {div_remainder_, BusStatus::Ok};
+        case kDIV_CSR: {
+            std::uint32_t csr = 0;
+            if (div_ready_) csr |= kDIV_CSR_READY;
+            if (div_dirty_) csr |= kDIV_CSR_DIRTY;
+            return {csr, BusStatus::Ok};
+        }
         default: return {0u, BusStatus::Ok};
     }
 }
@@ -109,6 +170,10 @@ BusStatus Sio::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         case kGPIO_OE_XOR:  gpio_.driver_set_oe(Gpio::kSio, oe ^ value); break;
         case kFIFO_ST:      fifo_wof_ = 0; fifo_roe_ = 0; break;  // write clears the flags
         case kFIFO_WR:      mailbox_write(value); break;
+        case kDIV_UDIVIDEND: start_divide(false, true, value); break;
+        case kDIV_UDIVISOR:  start_divide(false, false, value); break;
+        case kDIV_SDIVIDEND: start_divide(true, true, value); break;
+        case kDIV_SDIVISOR:  start_divide(true, false, value); break;
         default: break;
     }
     return BusStatus::Ok;
