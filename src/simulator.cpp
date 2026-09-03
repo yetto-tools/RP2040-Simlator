@@ -11,6 +11,10 @@ bool has_suffix(const std::string& s, const char* suffix) {
     return s.size() >= suf.size() && s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
 }
 
+// RP2040 boot ROM requirement: every flash image begins with a stage-2
+// bootloader of exactly this size (checksum included) - not configurable.
+constexpr std::uint32_t kBoot2Size = 256u;
+
 }  // namespace
 
 Simulator::Simulator() {
@@ -125,8 +129,19 @@ ElfImage Simulator::load(const std::string& path, bool from_entry) {
         img.highest_addr = u.highest_addr;
         img.entry = 0;  // UF2 carries no entry point
         if (!img.ok) return img;
-        // A UF2 is a flash image: reset always runs through its vector table.
-        cpu_.set_vtor(img.lowest_addr);
+        // A UF2 is a flash image: reset runs through its vector table. Real
+        // RP2040 silicon always executes a mandatory 256-byte stage-2
+        // bootloader (the boot ROM validates and runs it before anything
+        // else - pico-sdk's boot2_*.S sources are all exactly this size,
+        // ending in a CRC32) immediately ahead of that vector table; skip
+        // it here the same way, or every flash image boots 256 bytes into
+        // its own boot2 stub instead of the app's actual reset handler. A
+        // RAM-resident image (loaded straight into SRAM, which the boot ROM
+        // never validates) carries no such stub, so only apply this to
+        // images that actually target flash.
+        std::uint32_t vtor = img.lowest_addr;
+        if (Memory::kFlash.contains(vtor)) vtor += kBoot2Size;
+        cpu_.set_vtor(vtor);
         cpu_.reset();
         return img;
     }

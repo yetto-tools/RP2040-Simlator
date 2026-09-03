@@ -746,11 +746,25 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] "Not main flash" blocks skipped and counted; lowest/highest span reported
 - [x] `load_uf2_file()` convenience; `Simulator::load()` dispatches on `.uf2`
       and resets through the image's vector table
+- [x] Boot2 skip for flash images: the RP2040 boot ROM always validates and
+      runs a mandatory 256-byte stage-2 bootloader (every pico-sdk
+      `boot2_*.S`, and any hand-written equivalent - e.g. this repo's picoOS
+      fixture - is exactly that size, CRC32 included) before the app's own
+      vector table; `Simulator::load()` now sets VTOR to `lowest_addr + 256`
+      for images that land in `Memory::kFlash`, matching that boot sequence,
+      instead of resetting straight into the boot2 stub as if it were the
+      vector table. RAM-resident images (SRAM-targeted, never boot-ROM
+      validated) are unaffected - VTOR stays at `lowest_addr`. Found via a
+      real firmware (picoOS) that lockup'd at instruction 0 when loaded as
+      `.uf2` (worked fine as `.elf --entry`, which bypasses VTOR/reset
+      entirely) - `Simulator::load()`'s UF2 branch had no test coverage at
+      all before this.
 - [ ] Extension-tag / MD5-region parsing (not emitted by elf2uf2; deferred)
 - **Tests**: `tests/unit/test_uf2_loader.cpp` (synthetic blocks: two-block image,
       not-main-flash skip, no-family block, 7 malformed-stream subcases, run on
-      CPU) + `tests/integration/test_firmware.cpp` (real sum.elf repackaged as
-      UF2 and run end-to-end)
+      CPU) + `tests/unit/test_uf2_boot.cpp` (flash image skips boot2, SRAM
+      image doesn't) + `tests/integration/test_firmware.cpp` (real sum.elf
+      repackaged as UF2 and run end-to-end)
 - **Effort**: 10 hours
 - **Priority**: MEDIUM
 - **Dependencies**: P1.3
