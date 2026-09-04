@@ -13,6 +13,10 @@
 using socket_t = SOCKET;
 static constexpr socket_t kInvalidSocket = INVALID_SOCKET;
 static int close_socket(socket_t s) { return closesocket(s); }
+// Winsock's send()/recv() take an int length (and return one); POSIX's take
+// a size_t (and return ssize_t) - this alias lets send_all()/serve() pass
+// the right width on each platform without a sign/narrowing conversion.
+using xfer_len_t = int;
 #else
 #  include <arpa/inet.h>
 #  include <netinet/in.h>
@@ -21,6 +25,7 @@ static int close_socket(socket_t s) { return closesocket(s); }
 using socket_t = int;
 static constexpr socket_t kInvalidSocket = -1;
 static int close_socket(socket_t s) { return ::close(s); }
+using xfer_len_t = std::size_t;
 #endif
 
 namespace rp2040 {
@@ -310,7 +315,7 @@ namespace {
 bool send_all(socket_t s, const std::string& data) {
     std::size_t sent = 0;
     while (sent < data.size()) {
-        const int n = ::send(s, data.data() + sent, static_cast<int>(data.size() - sent), 0);
+        const auto n = ::send(s, data.data() + sent, static_cast<xfer_len_t>(data.size() - sent), 0);
         if (n <= 0) return false;
         sent += static_cast<std::size_t>(n);
     }
@@ -350,7 +355,7 @@ bool GdbStub::serve(std::uint16_t port) {
     std::array<char, 4096> buf{};
     bool running = true;
     while (running) {
-        const int n = ::recv(client, buf.data(), static_cast<int>(buf.size()), 0);
+        const auto n = ::recv(client, buf.data(), static_cast<xfer_len_t>(buf.size()), 0);
         if (n <= 0) break;
         rx.append(buf.data(), static_cast<std::size_t>(n));
 
