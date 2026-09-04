@@ -822,10 +822,13 @@ button:disabled {
   cursor: default;
 }
 
-/* Pico board node - fixed, not draggable/deletable (see PicoNode.tsx). */
+/* Pico board node - fixed, not draggable/deletable (see PicoNode.tsx).
+   Wide enough for a GPIO row's alt-function badges on both edges (the
+   Pico datasheet's own pinout diagram is wider still - this is the
+   compact-but-still-legible version of the same layout). */
 .pico-node {
   position: relative;
-  width: 190px;
+  width: 460px;
   background: var(--bg-panel-raised);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -838,51 +841,103 @@ button:disabled {
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
 }
-.pico-node__pin-label {
+.pico-node__led {
   position: absolute;
-  transform: translateY(-50%);
+  top: 32px;
+  left: 0;
+  right: 0;
+  text-align: center;
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-secondary);
+  font-size: 8px;
+  color: var(--text-tertiary);
   pointer-events: none;
 }
-.pico-node__pin-label--left {
-  left: 12px;
-}
-.pico-node__pin-label--right {
-  right: 12px;
-}
-.circuit-canvas .pico-node__handle.react-flow__handle {
-  border-color: var(--accent-power);
-}
 
-/* Power/control pin footer - a horizontal row of small self-positioned
-   wrappers so each Handle centers on its own pin instead of collapsing
-   onto the node's bottom-center (react-flow positions position="bottom"
-   handles relative to the nearest *positioned* ancestor). */
-.pico-node__power-row {
+/* One physical header pin - GPIO rows are taller (they carry badges), GND/
+   power rows are a thin bare strip. position:absolute (top/height set
+   inline by PicoNode.tsx's layout()) doubles as the Handle's containing
+   block, so the Handle centers on the row via plain top:50% (its own
+   default react-flow styling) without any extra positioning math. */
+.pico-node__row {
   position: absolute;
   left: 0;
   right: 0;
   display: flex;
-  justify-content: space-evenly;
-  padding: 0 6px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 16px;
+  font-family: var(--font-mono);
 }
-.pico-node__power-pin {
+.pico-node__row--left {
+  justify-content: flex-start;
+}
+.pico-node__row--right {
+  justify-content: flex-end;
+  text-align: right;
+}
+.pico-node__row--gnd,
+.pico-node__row--power {
+  opacity: 0.75;
+}
+
+.pico-node__pin-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.pico-node__row--gnd .pico-node__pin-label,
+.pico-node__row--power .pico-node__pin-label {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.pico-node__header-num {
+  min-width: 14px;
+  text-align: center;
+  font-size: 8px;
+  color: var(--text-tertiary);
+}
+.pico-node__badges {
+  font-size: 8px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.circuit-canvas .pico-node__handle.react-flow__handle {
+  border-color: var(--accent-power);
+}
+.circuit-canvas .pico-node__handle--power.react-flow__handle {
+  border-color: var(--accent-fault);
+}
+
+/* 3-pin SWD debug header - a horizontal row of small self-positioned
+   wrappers so each Handle centers on its own pin instead of collapsing
+   onto the node's bottom-center (react-flow positions position="bottom"
+   handles relative to the nearest *positioned* ancestor). */
+.pico-node__debug-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  padding: 4px 0;
+}
+.pico-node__debug-pin {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
 }
-.pico-node__power-label {
+.pico-node__debug-label {
   font-family: var(--font-mono);
   font-size: 8px;
   color: var(--text-tertiary);
   white-space: nowrap;
-}
-.circuit-canvas .pico-node__handle--power.react-flow__handle {
-  border-color: var(--accent-fault);
 }
 
 /* LED / Button component nodes. */

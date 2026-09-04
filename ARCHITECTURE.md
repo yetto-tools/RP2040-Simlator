@@ -1469,10 +1469,21 @@ canvas.
 
 - **The Pico board node** (`PicoNode.tsx`) is fixed (not draggable/
   deletable, synthesized fresh every render - see `CircuitCanvas.tsx`'s
-  `PICO_NODE` constant) with a connection handle per GPIO plus the power/
-  control pins (3V3, 3V3_EN, VBUS, VSYS, GND - structural only, not wired
-  to anything simulated). Pin data (which GPIOs map to which peripheral,
-  ADC channel, SPI/I2C instance) lives centrally in `picoPinout.ts`.
+  `PICO_NODE` constant), drawn as a physically accurate 40-pin-header
+  diagram: left edge = header pins 1-20 top to bottom, right edge = pins
+  40-21 top to bottom, GND/power pins (VBUS, VSYS, 3V3(OUT), 3V3_EN,
+  ADC_VREF, RUN - structural only, not wired to anything simulated) in
+  their real physical slots, plus the 3-pin SWD debug header below and an
+  "LED (GP25)" marker near the USB connector. GP23/24/25/29 carry no
+  connection handle: real hardware doesn't route them to this header
+  either. `PICO_HEADER_LEFT`/`PICO_HEADER_RIGHT`/`DEBUG_PINS` in
+  `picoPinout.ts` hold this layout; each GPIO row also shows its I2C/SPI/
+  UART/ADC alt-functions (`boardPinLabels()`, sharing its data with
+  `pinCapabilities()`'s tooltip in `PinPanel.tsx` so the two views agree).
+  This is a different, physical-position view from `PinPanel.tsx`'s own
+  `kNumGpio`/`kLeftCount` wrap-around table order - the two are
+  intentionally not the same layout, one is a compact debug table, the
+  other a board diagram.
 - **Component nodes** are one of two shapes:
   - *Single-GPIO* (LED, Button, Potentiometer, Buzzer): resolved by
     `useCircuitWiring()` to a `Map<nodeId, {gpio, state}>` - one wire in,

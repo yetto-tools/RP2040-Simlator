@@ -24,20 +24,81 @@ export function gpioFromHandleId(id: string | null | undefined): number | null {
   return m ? Number(m[1]) : null;
 }
 
-// Power/control pins (datasheet "Pines de alimentacion y control") - not
-// GPIOs, so they carry no PinState and useCircuitWiring's gpioFromHandleId
-// correctly resolves them to null (a wire here is purely structural, e.g.
-// a display's VCC/GND leg - nothing for the simulator to drive or read).
-export interface PowerPin {
-  id: string;
+// The physical 40-pin edge header, in the Pico board's own silkscreen
+// order and position (datasheet pinout diagram) - what PicoNode.tsx draws.
+// Distinct from kNumGpio/kLeftCount above, which is PinPanel's own compact
+// wrap-around table order and unrelated to physical pin placement.
+export type BoardPinKind = "gpio" | "gnd" | "power";
+
+export interface BoardPin {
+  header: number; // physical header pin number, 1-40 (0 = not on the header)
+  kind: BoardPinKind;
+  gpio?: number; // present when kind === "gpio"
   label: string;
+  // Wire-connection handle id. GPIO pins share the "gp<N>" convention (see
+  // picoHandleId) so useCircuitWiring's gpioFromHandleId resolves them to a
+  // live PinState; GND/power ids never match that pattern, so a wire there
+  // correctly resolves to a structural-only connection (nothing to drive or
+  // read - e.g. a display's VCC/GND leg).
+  handleId: string;
 }
-export const POWER_PINS: PowerPin[] = [
-  { id: "pwr_3v3", label: "3V3" },
-  { id: "pwr_3v3en", label: "3V3_EN" },
-  { id: "pwr_vbus", label: "VBUS" },
-  { id: "pwr_vsys", label: "VSYS" },
-  { id: "pwr_gnd", label: "GND" },
+
+function gpioPin(header: number, gpio: number): BoardPin {
+  return { header, kind: "gpio", gpio, label: `GP${gpio}`, handleId: picoHandleId(gpio) };
+}
+function gndPin(header: number): BoardPin {
+  return { header, kind: "gnd", label: "GND", handleId: `pwr_gnd_${header}` };
+}
+function powerPin(header: number, label: string, slug: string): BoardPin {
+  return { header, kind: "power", label, handleId: `pwr_${slug}` };
+}
+
+// Left edge, header pins 1-20, top to bottom.
+export const PICO_HEADER_LEFT: BoardPin[] = [
+  gpioPin(1, 0), gpioPin(2, 1), gndPin(3),
+  gpioPin(4, 2), gpioPin(5, 3),
+  gpioPin(6, 4), gpioPin(7, 5), gndPin(8),
+  gpioPin(9, 6), gpioPin(10, 7),
+  gpioPin(11, 8), gpioPin(12, 9), gndPin(13),
+  gpioPin(14, 10), gpioPin(15, 11),
+  gpioPin(16, 12), gpioPin(17, 13), gndPin(18),
+  gpioPin(19, 14), gpioPin(20, 15),
+];
+
+// Right edge, header pins 40 down to 21, top to bottom (pin 40 sits nearest
+// the USB connector, pin 21 nearest the DEBUG header - matching the board's
+// own silkscreen). GP23/24/25/29 are deliberately absent: they're real
+// RP2040 GPIOs, but none of them is routed to this 40-pin header on the
+// Pico (see the RESERVED notes below) - GP25 is the onboard LED only.
+export const PICO_HEADER_RIGHT: BoardPin[] = [
+  powerPin(40, "VBUS", "vbus"),
+  powerPin(39, "VSYS", "vsys"),
+  gndPin(38),
+  powerPin(37, "3V3_EN", "3v3en"),
+  powerPin(36, "3V3(OUT)", "3v3"),
+  powerPin(35, "ADC_VREF", "adc_vref"),
+  gpioPin(34, 28),
+  gndPin(33),
+  gpioPin(32, 27),
+  gpioPin(31, 26),
+  powerPin(30, "RUN", "run"),
+  gpioPin(29, 22),
+  gndPin(28),
+  gpioPin(27, 21),
+  gpioPin(26, 20),
+  gpioPin(25, 19),
+  gpioPin(24, 18),
+  gndPin(23),
+  gpioPin(22, 17),
+  gpioPin(21, 16),
+];
+
+// The 3-pin SWD debug header below the board (not part of the 40-pin edge
+// header).
+export const DEBUG_PINS: BoardPin[] = [
+  { header: 0, kind: "power", label: "SWCLK", handleId: "pwr_swclk" },
+  { header: 0, kind: "gnd", label: "GND", handleId: "pwr_gnd_dbg" },
+  { header: 0, kind: "power", label: "SWDIO", handleId: "pwr_swdio" },
 ];
 
 const I2C0_SDA = [0, 4, 8, 12, 16, 20];
@@ -106,44 +167,67 @@ function adcChannel(gpio: number): string | null {
   return ch === null ? null : `ADC${ch}`;
 }
 
+// Shared by pinCapabilities (PinPanel's tooltip) and boardPinLabels
+// (PicoNode's per-pin badges) so the two views never drift apart.
+function altFunctionGroups(gpio: number) {
+  return {
+    adc: adcChannel(gpio),
+    i2c: [
+      ...(I2C0_SDA.includes(gpio) ? ["I2C0 SDA"] : []),
+      ...(I2C0_SCL.includes(gpio) ? ["I2C0 SCL"] : []),
+      ...(I2C1_SDA.includes(gpio) ? ["I2C1 SDA"] : []),
+      ...(I2C1_SCL.includes(gpio) ? ["I2C1 SCL"] : []),
+    ],
+    spi: [
+      ...(SPI0_RX.includes(gpio) ? ["SPI0 RX"] : []),
+      ...(SPI0_TX.includes(gpio) ? ["SPI0 TX"] : []),
+      ...(SPI0_CLK.includes(gpio) ? ["SPI0 CLK"] : []),
+      ...(SPI0_CS.includes(gpio) ? ["SPI0 CS"] : []),
+      ...(SPI1_RX.includes(gpio) ? ["SPI1 RX"] : []),
+      ...(SPI1_TX.includes(gpio) ? ["SPI1 TX"] : []),
+      ...(SPI1_CLK.includes(gpio) ? ["SPI1 CLK"] : []),
+      ...(SPI1_CS.includes(gpio) ? ["SPI1 CS"] : []),
+    ],
+    uart: [
+      ...(UART0_TX.includes(gpio) ? ["UART0 TX"] : []),
+      ...(UART0_RX.includes(gpio) ? ["UART0 RX"] : []),
+      ...(UART1_TX.includes(gpio) ? ["UART1 TX"] : []),
+      ...(UART1_RX.includes(gpio) ? ["UART1 RX"] : []),
+    ],
+  };
+}
+
 // One line per capability, most relevant first - fed straight into a
 // title="" tooltip (Cell in PinPanel.tsx joins with "\n").
 export function pinCapabilities(gpio: number): string[] {
   const lines: string[] = [];
+  const g = altFunctionGroups(gpio);
 
-  const adc = adcChannel(gpio);
-  if (adc) lines.push(adc);
+  if (g.adc) lines.push(g.adc);
   const pwm = pwmChannel(gpio);
   if (pwm) lines.push(pwm);
-
-  const i2c: string[] = [];
-  if (I2C0_SDA.includes(gpio)) i2c.push("I2C0 SDA");
-  if (I2C0_SCL.includes(gpio)) i2c.push("I2C0 SCL");
-  if (I2C1_SDA.includes(gpio)) i2c.push("I2C1 SDA");
-  if (I2C1_SCL.includes(gpio)) i2c.push("I2C1 SCL");
-  if (i2c.length) lines.push(i2c.join(" / "));
-
-  const spi: string[] = [];
-  if (SPI0_RX.includes(gpio)) spi.push("SPI0 RX");
-  if (SPI0_TX.includes(gpio)) spi.push("SPI0 TX");
-  if (SPI0_CLK.includes(gpio)) spi.push("SPI0 CLK");
-  if (SPI0_CS.includes(gpio)) spi.push("SPI0 CS");
-  if (SPI1_RX.includes(gpio)) spi.push("SPI1 RX");
-  if (SPI1_TX.includes(gpio)) spi.push("SPI1 TX");
-  if (SPI1_CLK.includes(gpio)) spi.push("SPI1 CLK");
-  if (SPI1_CS.includes(gpio)) spi.push("SPI1 CS");
-  if (spi.length) lines.push(spi.join(" / "));
-
-  const uart: string[] = [];
-  if (UART0_TX.includes(gpio)) uart.push("UART0 TX");
-  if (UART0_RX.includes(gpio)) uart.push("UART0 RX");
-  if (UART1_TX.includes(gpio)) uart.push("UART1 TX");
-  if (UART1_RX.includes(gpio)) uart.push("UART1 RX");
-  if (uart.length) lines.push(uart.join(" / "));
+  if (g.i2c.length) lines.push(g.i2c.join(" / "));
+  if (g.spi.length) lines.push(g.spi.join(" / "));
+  if (g.uart.length) lines.push(g.uart.join(" / "));
 
   const reserved = RESERVED[gpio];
   if (reserved) lines.push(reserved);
 
+  return lines;
+}
+
+// Compact per-function badges for the physical board diagram (PicoNode) -
+// one entry per function rather than pinCapabilities' "A / B" joined lines,
+// so each renders as its own small chip. PWM and the reserved-pin note are
+// left out: the Pico's own datasheet pinout diagram doesn't show them on
+// the header either (PWM repeats predictably from the GPIO number, and
+// reserved pins - GP23/24/25/29 - never appear in PICO_HEADER_LEFT/RIGHT at
+// all, see picoPinout.ts).
+export function boardPinLabels(gpio: number): string[] {
+  const g = altFunctionGroups(gpio);
+  const lines: string[] = [];
+  if (g.adc) lines.push(g.adc);
+  lines.push(...g.i2c, ...g.spi, ...g.uart);
   return lines;
 }
 

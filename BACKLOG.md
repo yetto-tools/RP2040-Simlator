@@ -1204,17 +1204,38 @@ Week 12:    PHASE 9 - Documentation & Release
       wiring implies - see `ARCHITECTURE.md` §12.6). ILI9341 shares
       ST7789's command decoder (same MIPI DBI Type C opcodes, different
       default resolution) rather than duplicating it.
-- [x] Pico board node with all 30 GPIO handles + power/control pins (3V3,
-      3V3_EN, VBUS, VSYS, GND - structural only)
 - [x] Polish pass (frontend-only): non-overlapping new-node placement,
       invalid-wiring/attach-slot-conflict feedback, free-text canvas notes,
       a rotary-knob potentiometer visual, handle/selection theming - see
       `ARCHITECTURE.md` §12.6 "Polish pass"
+- [x] Pico board node redrawn as a faithful physical-header diagram
+      (`PicoNode.tsx`, against the board's own datasheet pinout image):
+      left edge = header pins 1-20 top to bottom, right edge = pins 40-21
+      top to bottom, GND interspersed exactly where the silkscreen puts
+      it, VBUS/VSYS/3V3(OUT)/3V3_EN/ADC_VREF/RUN in their real slots, a
+      3-pin SWD debug header (SWCLK/GND/SWDIO) below, and an "LED (GP25)"
+      marker near the USB connector - all replacing the earlier version's
+      simplified GP0..14-left/GP29..15-right wrap layout (still used
+      as-is by `PinPanel.tsx`'s compact table, a deliberately different,
+      non-physical view - see `kNumGpio`/`kLeftCount` in `picoPinout.ts`).
+      GP23/24/25/29 are no longer wireable pins on the board: none of them
+      is actually routed to the 40-pin header on real hardware (GP25 is
+      the onboard LED only), so the previous all-30-GPIO board let a
+      circuit be wired in a way no real Pico could reproduce. Each GPIO
+      row also shows its I2C/SPI/UART/ADC alt-functions as small badges
+      (`boardPinLabels()`, factored out of the existing `pinCapabilities()`
+      tooltip logic so the two views can't drift apart) - PWM and the
+      reserved-pin note are left off the board itself (matching the
+      datasheet diagram) but still in `pinCapabilities()`'s tooltip.
+      Verified live: reloaded a circuit saved under the old layout - every
+      existing wire re-resolved to the correct pin, since `gp<N>` handle
+      ids didn't change, only their on-screen position did.
 - **Design**: see `ARCHITECTURE.md` §12.6
 - **Files**: `src/peripherals/st7789.{h,cpp}`, `ili9341.h`, `ssd1306.{h,cpp}`,
       `src/peripherals/i2c.{h,cpp}` (`on_stop()` hook), `tools/lab_server/
-      debug_session.{h,cpp}`, `main.cpp`, `web/src/components/circuit/*`,
-      `web/src/picoPinout.ts`, `useCircuitWiring.ts`, `web/src/api.ts`
+      debug_session.{h,cpp}`, `main.cpp`, `web/src/components/circuit/
+      PicoNode.tsx`, `web/src/picoPinout.ts`, `web/src/index.css`,
+      `useCircuitWiring.ts`, `web/src/api.ts`
 - **Priority**: was LOW (nice-to-have); promoted by explicit author request
 - **Dependencies**: P10.1, P10.2, P10.3, P10.4
 
