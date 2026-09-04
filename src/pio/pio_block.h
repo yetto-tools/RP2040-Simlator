@@ -65,7 +65,6 @@ public:
 
 private:
     Gpio& gpio_;
-    int index_;
     std::array<std::uint16_t, kInstrWords> program_{};
     std::array<StateMachine, kNumSm> sm_{};
     std::uint8_t irq_ = 0;

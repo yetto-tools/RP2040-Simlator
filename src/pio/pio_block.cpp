@@ -2,7 +2,7 @@
 
 namespace rp2040 {
 
-PioBlock::PioBlock(Gpio& gpio, int index) : gpio_(gpio), index_(index) {
+PioBlock::PioBlock(Gpio& gpio, int index) : gpio_(gpio) {
     const Gpio::Driver drv = (index == 0) ? Gpio::kPio0 : Gpio::kPio1;
     for (unsigned i = 0; i < kNumSm; ++i) {
         sm_[i].set_program(program_.data());
