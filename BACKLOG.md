@@ -483,7 +483,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Second `Spi` instance (see P4.3); SPI1_IRQ = IRQ19, wired into
       `Simulator` alongside SPI0 (clock pacing + on_cycles)
 
-#### P4.5 / P4.6: I2C0 / I2C1 Controller (DW_apb_i2c)  [IN PROGRESS]
+#### P4.5 / P4.6: I2C0 / I2C1 Controller (DW_apb_i2c)  [DONE]
 - [x] `I2c` BusPeripheral (`src/peripherals/i2c.{h,cpp}`) @ 0x40044000 /
       0x40048000; I2C0_IRQ = IRQ23, I2C1_IRQ = IRQ24
 - [x] Master-mode model: IC_ENABLE, IC_TAR, IC_DATA_CMD (write byte / read
@@ -506,8 +506,34 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] DMA request lines: `tx_dreq_ready()`/`rx_dreq_ready()`, gated by
       IC_DMA_CR.TDMAE/RDMAE (offset 0x88) and real TX-command/RX FIFO state,
       registered for DREQ_I2C0/1_TX/RX (32-35) in `Simulator`
-- [ ] 10-bit addressing, slave mode, arbitration loss
-- **Tests**: `tests/unit/test_i2c.cpp` (9 cases)
+- [x] 10-bit addressing (datasheet 4.3.5): IC_TAR/IC_SAR already stored the
+      full 10 bits; address matching now widens its mask from 0x7F to
+      0x3FF whenever IC_CON.IC_10BITADDR_MASTER/_SLAVE is set, instead of
+      always truncating to 7 bits - `set_slave()`'s address parameter
+      widened `uint8_t` -> `uint16_t` to match
+- [x] Slave mode (IC_CON.IC_SLAVE_DISABLE clear): a new
+      `slave_transfer(addr, is_read, byte)` / `slave_stop()` pair - the
+      slave-side counterpart to the existing master-side `set_slave()` -
+      lets a test bench (or a hand-written virtual master) simulate an
+      external master addressing this controller's own IC_SAR. A write
+      lands in the same RX FIFO IC_DATA_CMD already reads from; a read
+      with nothing queued raises RD_REQ and returns false (the same
+      clock-stretching-by-approximation pattern `stretch_next()` already
+      uses on the master side) until firmware answers via IC_DATA_CMD.
+      IC_DATA_CMD is genuinely shared with the master command queue in
+      real DW_apb_i2c hardware too: a new `rd_req_pending_` flag
+      disambiguates a write as "the outstanding slave response" only
+      while one is actually outstanding, so a device with *both* master
+      and slave enabled at once - a real, valid RP2040 configuration, not
+      just a hypothetical - still worked correctly, unlike an earlier
+      version of this that (wrongly) disambiguated by the static
+      IC_CON.MASTER_MODE bit instead and broke exactly that combination;
+      caught by a test built around it
+- [ ] Arbitration loss: not modelled, but as a direct consequence of "no
+      multi-master arbitration" above (already a pre-existing, documented
+      limitation) - there is only ever one bus driver in this simulator,
+      so there's nothing to lose arbitration against. Not attempted.
+- **Tests**: `tests/unit/test_i2c.cpp` (16 cases)
 - **Design**: RP2040 datasheet 4.3
 
 ---

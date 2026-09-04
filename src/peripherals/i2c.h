@@ -8,7 +8,24 @@
 // slave: stretch_next() lets the test bench add extra ic_clk cycles to the
 // next transaction, standing in for a slave clock-stretching the bus.
 //
-// Not modelled: 10-bit addressing, slave mode, arbitration loss, DMA.
+// 10-bit addressing (IC_CON.IC_10BITADDR_MASTER/_SLAVE): IC_TAR/IC_SAR
+// already store the full 10 bits: address matching just widens its mask
+// from 0x7F to 0x3FF when the corresponding bit is set (datasheet 4.3.5).
+//
+// Slave mode (IC_CON.IC_SLAVE_DISABLE clear): this controller can also
+// answer as a slave, via slave_transfer()/slave_stop() - the slave-side
+// counterpart to set_slave() above, since there's no simulated shared wire
+// connecting two I2c instances together for the real hardware's own
+// external-master signal to reach this side automatically. A test bench
+// (or a hand-written virtual master) drives it directly. IC_DATA_CMD is
+// shared with the master command queue, matching real hardware: a write
+// while a slave-mode read request is outstanding is taken as that
+// request's response byte; otherwise it's queued as a new master command
+// as always.
+//
+// Not modelled: arbitration loss (a consequence of "no multi-master
+// arbitration" above - there's only ever one bus driver in this model, so
+// there's nothing to lose arbitration against), DMA.
 #ifndef RP2040_PERIPHERALS_I2C_H
 #define RP2040_PERIPHERALS_I2C_H
 
@@ -42,11 +59,26 @@ public:
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
     void reset() override;
 
-    // Register a 7-bit slave. On a write transaction `byte` is the data and
-    // the callback returns whether it ACKed; on a read it fills `byte` and
-    // returns true if data is valid.
+    // Register a 7- or 10-bit slave (matched against whatever width
+    // IC_CON.IC_10BITADDR_MASTER selects when a command actually runs). On
+    // a write transaction `byte` is the data and the callback returns
+    // whether it ACKed; on a read it fills `byte` and returns true if data
+    // is valid.
     using SlaveFn = std::function<bool(bool is_read, std::uint8_t& byte)>;
-    void set_slave(std::uint8_t addr7, SlaveFn fn) { slave_addr_ = addr7; slave_ = std::move(fn); }
+    void set_slave(std::uint16_t addr, SlaveFn fn) { slave_addr_ = addr; slave_ = std::move(fn); }
+
+    // --- slave-mode counterpart (see the class comment) -----------------
+    // Simulates an external master addressing this controller's own IC_SAR,
+    // for a write (byte is the incoming data) or a read (byte is filled
+    // from whatever firmware queued via IC_DATA_CMD in response to
+    // RD_REQ). Returns whether this device ACKed: false on an address
+    // mismatch, a full RX FIFO on a write, or - on a read - no response
+    // byte queued yet (RD_REQ is raised in that case; the caller is
+    // expected to retry once firmware has serviced it, the same
+    // clock-stretching-by-approximation already used on the master side).
+    bool slave_transfer(std::uint16_t addr, bool is_read, std::uint8_t& byte);
+    // An external master addressed to us sends STOP.
+    void slave_stop();
 
     // Optional: called once per I2C STOP condition addressed to the
     // registered slave (a Cmd with .stop set - firmware requests this by
@@ -84,6 +116,9 @@ private:
     void refresh_irq();
     std::uint32_t scl_period_cycles() const;  // ic_clk cycles per SCL period
     void run_command();                       // execute the oldest queued Cmd
+    bool slave_enabled() const { return (con_ & (1u << 6)) == 0; }   // IC_CON.IC_SLAVE_DISABLE (active-low)
+    std::uint32_t master_addr_mask() const { return ((con_ >> 4) & 1u) ? 0x3FFu : 0x7Fu; }  // 10BITADDR_MASTER
+    std::uint32_t slave_addr_mask() const { return ((con_ >> 3) & 1u) ? 0x3FFu : 0x7Fu; }   // 10BITADDR_SLAVE
 
     InterruptController nvic_;
     std::uint32_t base_;
@@ -91,10 +126,13 @@ private:
 
     std::uint32_t con_ = 0x65;   // reset-ish: master, 7-bit, fast mode
     std::uint32_t tar_ = 0;
+    std::uint32_t sar_ = 0;      // IC_SAR: this controller's own slave address
     bool enabled_ = false;
     std::uint32_t dma_cr_ = 0;   // IC_DMA_CR: bit0 RDMAE, bit1 TDMAE
 
     std::deque<Cmd> tx_cmds_;
+    std::deque<std::uint8_t> slave_tx_;  // slave-mode: bytes queued for the next RD_REQ
+    bool rd_req_pending_ = false;        // an outstanding slave-mode read is awaiting IC_DATA_CMD
     std::deque<std::uint8_t> rx_;
     std::uint32_t raw_intr_ = 0;      // RX_FULL[2], TX_EMPTY[4], TX_ABRT[6], STOP_DET[9]
     std::uint32_t intr_mask_ = 0;
@@ -109,7 +147,7 @@ private:
     std::uint32_t byte_cycles_left_ = 0;  // ic_clk cycles left in the transaction in flight
     std::uint32_t stretch_cycles_ = 0;    // extra ic_clk cycles for the next transaction only
 
-    std::uint8_t slave_addr_ = 0xFF;
+    std::uint16_t slave_addr_ = 0xFFFFu;
     SlaveFn slave_;
     std::function<void()> on_stop_;
 };

@@ -15,6 +15,7 @@ enum : std::uint32_t {
 };
 constexpr std::uint32_t kINTR_RX_FULL  = 1u << 2;
 constexpr std::uint32_t kINTR_TX_EMPTY = 1u << 4;
+constexpr std::uint32_t kINTR_RD_REQ   = 1u << 5;
 constexpr std::uint32_t kINTR_TX_ABRT  = 1u << 6;
 constexpr std::uint32_t kINTR_STOP_DET = 1u << 9;
 
@@ -40,7 +41,7 @@ void I2c::run_command() {
     const Cmd cmd = tx_cmds_.front();
     tx_cmds_.pop_front();
 
-    const std::uint8_t target = static_cast<std::uint8_t>(tar_ & 0x7Fu);
+    const std::uint16_t target = static_cast<std::uint16_t>(tar_ & master_addr_mask());
     const bool addressed = slave_ && slave_addr_ == target;
     if (!addressed) {
         tx_abrt_source_ |= kABRT_7B_ADDR_NOACK;
@@ -82,6 +83,33 @@ void I2c::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+bool I2c::slave_transfer(std::uint16_t addr, bool is_read, std::uint8_t& byte) {
+    if (!slave_enabled()) return false;
+    if ((addr & slave_addr_mask()) != (sar_ & slave_addr_mask())) return false;
+
+    if (is_read) {
+        if (slave_tx_.empty()) {
+            rd_req_pending_ = true;
+            raw_intr_ |= kINTR_RD_REQ;
+            refresh_irq();
+            return false;   // firmware hasn't supplied a response byte yet
+        }
+        byte = slave_tx_.front();
+        slave_tx_.pop_front();
+        return true;
+    }
+    if (rx_.size() >= kFifoDepth) return false;  // would NACK: FIFO full
+    rx_.push_back(byte);
+    raw_intr_ |= kINTR_RX_FULL;
+    refresh_irq();
+    return true;
+}
+
+void I2c::slave_stop() {
+    raw_intr_ |= kINTR_STOP_DET;
+    refresh_irq();
+}
+
 bool I2c::tx_dreq_ready() const {
     return (dma_cr_ & (1u << 1)) != 0 && tx_cmds_.size() < kFifoDepth;
 }
@@ -97,9 +125,12 @@ void I2c::refresh_irq() {
 void I2c::reset() {
     con_ = 0x65;
     tar_ = 0;
+    sar_ = 0;
     enabled_ = false;
     dma_cr_ = 0;
     tx_cmds_.clear();
+    slave_tx_.clear();
+    rd_req_pending_ = false;
     rx_.clear();
     raw_intr_ = 0;
     intr_mask_ = 0;
@@ -121,6 +152,7 @@ BusResult<std::uint32_t> I2c::bus_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kIC_CON: return {con_, BusStatus::Ok};
         case kIC_TAR: return {tar_, BusStatus::Ok};
+        case kIC_SAR: return {sar_, BusStatus::Ok};
         case kIC_SS_SCL_HCNT: return {ss_hcnt_, BusStatus::Ok};
         case kIC_SS_SCL_LCNT: return {ss_lcnt_, BusStatus::Ok};
         case kIC_FS_SCL_HCNT: return {fs_hcnt_, BusStatus::Ok};
@@ -175,7 +207,7 @@ BusStatus I2c::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
     switch (offset) {
         case kIC_CON: con_ = value; break;
         case kIC_TAR: tar_ = value & 0x3FFu; break;
-        case kIC_SAR: break;
+        case kIC_SAR: sar_ = value & 0x3FFu; break;
         case kIC_SS_SCL_HCNT: ss_hcnt_ = value & 0xFFFFu; break;
         case kIC_SS_SCL_LCNT: ss_lcnt_ = value & 0xFFFFu; break;
         case kIC_FS_SCL_HCNT: fs_hcnt_ = value & 0xFFFFu; break;
@@ -184,6 +216,18 @@ BusStatus I2c::bus_write(std::uint32_t offset, std::uint32_t value, BusWidth) {
         case kIC_DMA_CR: dma_cr_ = value & 0x3u; break;
         case kIC_INTR_MASK: intr_mask_ = value & 0x3FFFu; refresh_irq(); break;
         case kIC_DATA_CMD: {
+            if (rd_req_pending_) {
+                // Slave-mode response byte for the outstanding RD_REQ
+                // (datasheet 4.3.9.6), sharing IC_DATA_CMD with the master
+                // command queue below like real hardware.
+                rd_req_pending_ = false;
+                if (slave_tx_.size() < kFifoDepth) {
+                    slave_tx_.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+                }
+                raw_intr_ &= ~kINTR_RD_REQ;
+                refresh_irq();
+                break;
+            }
             if (!enabled_ || tx_cmds_.size() >= kFifoDepth) break;
             Cmd cmd;
             cmd.is_read = (value & (1u << 8)) != 0;

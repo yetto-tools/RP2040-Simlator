@@ -141,6 +141,77 @@ TEST_CASE_FIXTURE(I2cFix, "with no bit-rate configured (HCNT=LCNT=0), no transac
     CHECK(rd(0x74) == 1u);         // IC_TXFLR: the command is still queued
 }
 
+TEST_CASE_FIXTURE(I2cFix, "10-bit addressing matches the full target, not just its low 7 bits") {
+    wr(0x00, rd(0x00) | (1u << 4));  // IC_CON.IC_10BITADDR_MASTER
+    std::vector<std::uint8_t> got;
+    i2c.set_slave(0x1D0, [&](bool, std::uint8_t& b) { got.push_back(b); return true; });
+
+    wr(0x04, 0x50);   // a 7-bit-only address that happens to share 0x1D0's low 7 bits (0x50)
+    wr(0x10, 0xAA);
+    advance_cmds(1);
+    CHECK(got.empty());                              // wrong (7-bit-truncated) target: no match
+    CHECK((rd(0x34) & (1u << 6)) != 0);               // TX_ABRT instead
+    rd(0x54);                                         // IC_CLR_TX_ABRT
+
+    wr(0x04, 0x1D0);  // the real 10-bit target
+    wr(0x10, 0xBB);
+    advance_cmds(1);
+    REQUIRE(got.size() == 1);
+    CHECK(got[0] == 0xBB);
+}
+
+TEST_CASE_FIXTURE(I2cFix, "7-bit mode (the default) never matches a 10-bit target") {
+    i2c.set_slave(0x1D0, [](bool, std::uint8_t&) { return true; });
+    wr(0x04, 0x1D0);   // IC_TAR holds it, but IC_10BITADDR_MASTER is off
+    wr(0x10, 0x00);
+    advance_cmds(1);
+    CHECK((rd(0x34) & (1u << 6)) != 0);   // TX_ABRT: 0x1D0 & 0x7F == 0x50, no slave there
+}
+
+TEST_CASE_FIXTURE(I2cFix, "slave mode: an external master's write lands in the RX FIFO") {
+    wr(0x00, rd(0x00) & ~(1u << 6));  // clear IC_CON.IC_SLAVE_DISABLE
+    wr(0x08, 0x42u);                  // IC_SAR
+
+    std::uint8_t b = 0x77;
+    CHECK(i2c.slave_transfer(0x42, /*is_read=*/false, b));
+    CHECK((rd(0x34) & (1u << 2)) != 0);   // RAW_INTR_STAT.RX_FULL
+    CHECK(rd(0x10) == 0x77);              // IC_DATA_CMD pops it
+}
+
+TEST_CASE_FIXTURE(I2cFix, "slave mode: a read raises RD_REQ until firmware answers via IC_DATA_CMD") {
+    wr(0x00, rd(0x00) & ~(1u << 6));
+    wr(0x08, 0x42u);
+
+    std::uint8_t b = 0;
+    CHECK_FALSE(i2c.slave_transfer(0x42, /*is_read=*/true, b));  // nothing queued yet
+    CHECK((rd(0x34) & (1u << 5)) != 0);   // RAW_INTR_STAT.RD_REQ
+
+    wr(0x10, 0x5A);                       // firmware's response byte
+    CHECK((rd(0x34) & (1u << 5)) == 0);   // RD_REQ cleared by the write
+
+    CHECK(i2c.slave_transfer(0x42, /*is_read=*/true, b));
+    CHECK(b == 0x5A);
+}
+
+TEST_CASE_FIXTURE(I2cFix, "slave mode ignores an address that doesn't match IC_SAR") {
+    wr(0x00, rd(0x00) & ~(1u << 6));
+    wr(0x08, 0x42u);
+    std::uint8_t b = 0;
+    CHECK_FALSE(i2c.slave_transfer(0x43, false, b));
+    CHECK(rd(0x34) == 0u);   // no RX_FULL, no side effect at all
+}
+
+TEST_CASE_FIXTURE(I2cFix, "slave mode does nothing while IC_SLAVE_DISABLE is set (the reset default)") {
+    std::uint8_t b = 0;
+    CHECK_FALSE(i2c.slave_transfer(0x00, false, b));   // matches SAR's reset value (0) too
+    CHECK(rd(0x34) == 0u);
+}
+
+TEST_CASE_FIXTURE(I2cFix, "slave_stop() raises STOP_DET") {
+    i2c.slave_stop();
+    CHECK((rd(0x34) & (1u << 9)) != 0);
+}
+
 TEST_CASE_FIXTURE(I2cFix, "tx/rx_dreq_ready() are gated by IC_DMA_CR and FIFO state") {
     CHECK_FALSE(i2c.tx_dreq_ready());      // TDMAE not set yet
     wr(0x88, 1u << 1);                     // IC_DMA_CR.TDMAE
