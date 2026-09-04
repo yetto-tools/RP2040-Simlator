@@ -376,15 +376,37 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Files**: `src/peripherals/timer.{h,cpp}`
 - **Design**: RP2040 datasheet 4.6
 
-#### P3.3: PWM Controller (0x40050000)  [IN PROGRESS]
+#### P3.3: PWM Controller (0x40050000)  [DONE]
 - [x] `Pwm` BusPeripheral (`src/peripherals/pwm.{h,cpp}`), 8 slices x 2 channels
 - [x] Per-slice CSR/DIV/CTR/CC/TOP; global EN, INTR/INTE/INTF/INTS
 - [x] Free-running fractional divider, count-up + PH_CORRECT up/down, TOP wrap
 - [x] CC compare -> GPIO level (slice N ch A/B -> GPIO 2N / 2N+1 [+16]),
       A_INV / B_INV; new `Gpio::kPwm` driver + FUNCSEL 4
 - [x] Wrap interrupt -> PWM_IRQ_WRAP (IRQ4); wired into Simulator on_cycles()
-- [ ] B-pin gated/edge DIVMODEs, phase advance/retard, DMA
-- **Tests**: `tests/unit/test_pwm.cpp` (6 cases)
+- [x] B-pin DIVMODE 1-3 (datasheet 4.5.2.1): LEVEL gates the same
+      fractional-divider clock on a live B-pin read (held entirely, not
+      just un-paced, while B is low); RISE/FALL bypass the divider
+      entirely and advance the counter once per detected edge on B
+      instead (`Slice::prev_b` edge state). In all three, B's own PWM
+      output driver is disabled (`update_outputs()` now also drives OE via
+      `driver_set_pindir`, not just the output level - previously never
+      set at all outside of what a test manually forced) so it correctly
+      reads as an external input through `Gpio::level()`/`func_level()`,
+      matching real hardware repurposing the pin
+- [x] CSR.PH_ADV / PH_RET (manual +-1 count while running, for phase-
+      aligning independently-started slices): applied immediately as
+      self-clearing strobes (there's no real hardware latency here to poll
+      through) rather than stored state; PH_RET is `advance_slice()`'s
+      exact mirror (`retard_slice()`), and doesn't raise the wrap IRQ -
+      it's a corrective nudge, not a real wrap event
+- [ ] DMA: no PWM_WRAPn DREQ registered with the DMA controller. Unlike
+      UART/SPI/I2C/ADC's DREQs (a level check - "is there room/data" -
+      that fits `Dma::set_dreq_source()`'s `std::function<bool()>`
+      abstraction directly), a PWM wrap DREQ is a one-shot pulse once per
+      period with no FIFO behind it - genuinely different shape, not
+      implemented here to avoid forcing a wrong abstraction; still falls
+      back to DMA's generic `dreq_divisor()` approximation
+- **Tests**: `tests/unit/test_pwm.cpp` (13 cases)
 - **Design**: RP2040 datasheet 4.5
 
 ---

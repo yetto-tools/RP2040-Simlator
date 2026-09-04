@@ -2,9 +2,16 @@
 // and a 16-bit counter. Channel A/B of slice N drive GPIO 2N / 2N+1 (and
 // +16) when their FUNCSEL is PWM.
 //
-// Modelled: free-running divider (DIVMODE 0), count-up and phase-correct
-// count-up/down, TOP wrap, CC compare -> GPIO level, per-slice wrap IRQ.
-// Not modelled: B-pin gated/edge divider modes, phase advance/retard.
+// Modelled: free-running divider (DIVMODE 0), the B-pin gated/rising-edge/
+// falling-edge divider modes (DIVMODE 1-3 - B becomes an input in these,
+// its own PWM output driver disabled, matching real hardware), count-up
+// and phase-correct count-up/down, TOP wrap, CC compare -> GPIO level,
+// per-slice wrap IRQ, CSR.PH_ADV/PH_RET (manual +-1 count for phase-
+// aligning independently started slices).
+// Not modelled: DMA (no PWM_WRAPn DREQ registered with the DMA controller -
+// unlike UART/SPI/I2C/ADC's level-checked DREQs, a wrap DREQ is a one-shot
+// pulse per period, a different shape the current DREQ abstraction doesn't
+// fit without further work).
 #ifndef RP2040_PERIPHERALS_PWM_H
 #define RP2040_PERIPHERALS_PWM_H
 
@@ -52,9 +59,11 @@ private:
         std::uint16_t top = 0xFFFF;
         std::uint32_t frac_accum = 0;  // 8-bit fractional divider accumulator
         bool counting_down = false;
+        bool prev_b = false;   // last-seen B-pin level, for DIVMODE RISE/FALL edge detect
     };
 
     void advance_slice(unsigned s);
+    void retard_slice(unsigned s);
     void update_outputs(unsigned s);
     void refresh_irq();
 

@@ -110,3 +110,93 @@ TEST_CASE_FIXTURE(PwmFix, "the global EN register also enables a slice") {
     pwm.on_cycles(1);
     CHECK(pwm.counter(5) == 1);
 }
+
+TEST_CASE_FIXTURE(PwmFix, "DIVMODE=LEVEL gates the counter's clock on the B pin") {
+    sreg(0, 0x10, 0xFFFF);
+    sreg(0, 0x04, 0x010);           // DIV = 1.0 (would tick every cycle if ungated)
+    gpio.set_external(1, false);    // slice 0 channel B = GPIO1, held low
+    sreg(0, 0x00, 1u | (1u << 4));  // CSR.EN | DIVMODE=LEVEL
+
+    pwm.on_cycles(10);
+    CHECK(pwm.counter(0) == 0);     // B low: the clock is held, no progress at all
+
+    gpio.set_external(1, true);
+    pwm.on_cycles(5);
+    CHECK(pwm.counter(0) == 5);     // B high: runs at the normal (DIV=1) rate
+}
+
+TEST_CASE_FIXTURE(PwmFix, "DIVMODE=RISE advances one count per B rising edge, bypassing DIV") {
+    sreg(1, 0x10, 0xFFFF);
+    sreg(1, 0x04, 0xF0u << 4);      // DIV = 240 - irrelevant in edge mode
+    gpio.set_external(3, false);    // slice 1 channel B = GPIO3
+    sreg(1, 0x00, 1u | (2u << 4));  // CSR.EN | DIVMODE=RISE
+
+    pwm.on_cycles(50);
+    CHECK(pwm.counter(1) == 0);     // no edges yet
+
+    gpio.set_external(3, true);     // rising edge
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(1) == 1);
+
+    pwm.on_cycles(50);
+    CHECK(pwm.counter(1) == 1);     // held high: no further edges
+
+    gpio.set_external(3, false);
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(1) == 1);     // falling edge: not counted in RISE mode
+
+    gpio.set_external(3, true);
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(1) == 2);     // second rising edge
+}
+
+TEST_CASE_FIXTURE(PwmFix, "DIVMODE=FALL advances one count per B falling edge") {
+    sreg(2, 0x10, 0xFFFF);
+    gpio.set_external(5, true);     // slice 2 channel B = GPIO5, starts high
+    sreg(2, 0x00, 1u | (3u << 4));  // CSR.EN | DIVMODE=FALL
+
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(2) == 0);     // no edge (still high, priming prev_b)
+
+    gpio.set_external(5, false);
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(2) == 1);     // falling edge
+
+    gpio.set_external(5, true);
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(2) == 1);     // rising edge: not counted in FALL mode
+}
+
+TEST_CASE_FIXTURE(PwmFix, "B's output driver is disabled while gated/edge DIVMODE is selected") {
+    gpio.set_funcsel(1, Gpio::kFuncPwm);   // slice 0 channel B = GPIO1
+    sreg(0, 0x00, 1u | (1u << 4));         // CSR.EN | DIVMODE=LEVEL
+    CHECK_FALSE(gpio.pad_driving(1));      // B is an input now, not an output
+
+    sreg(0, 0x00, 1u);                     // back to DIVMODE=FREE
+    CHECK(gpio.pad_driving(1));            // B drives again
+}
+
+TEST_CASE_FIXTURE(PwmFix, "CSR.PH_ADV nudges the counter forward by exactly 1, self-clearing") {
+    sreg(4, 0x10, 100);
+    sreg(4, 0x04, 0x010);
+    sreg(4, 0x00, 1u);              // CSR.EN, not yet advanced
+    CHECK(pwm.counter(4) == 0);
+
+    sreg(4, 0x00, 1u | (1u << 6));  // CSR.EN | PH_ADV
+    CHECK(pwm.counter(4) == 1);     // applied immediately, no on_cycles() needed
+    CHECK((rd(4 * 0x14u + 0x00u) & (1u << 6)) == 0);  // PH_ADV reads back clear
+}
+
+TEST_CASE_FIXTURE(PwmFix, "CSR.PH_RET nudges the counter backward by exactly 1, wrapping at 0") {
+    sreg(7, 0x10, 100);
+    sreg(7, 0x00, 1u);
+    pwm.on_cycles(1);
+    CHECK(pwm.counter(7) == 1);
+
+    sreg(7, 0x00, 1u | (1u << 7));  // CSR.EN | PH_RET
+    CHECK(pwm.counter(7) == 0);
+
+    sreg(7, 0x00, 1u | (1u << 7));  // retard again, from 0 - wraps to TOP
+    CHECK(pwm.counter(7) == 100);
+    CHECK((rd(7 * 0x14u + 0x00u) & (1u << 7)) == 0);  // PH_RET reads back clear
+}
