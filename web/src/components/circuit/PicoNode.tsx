@@ -1,25 +1,19 @@
 import { Handle, Position } from "@xyflow/react";
 import { boardPinLabels, DEBUG_PINS, PICO_HEADER_LEFT, PICO_HEADER_RIGHT, type BoardPin } from "../../picoPinout";
 
-const GPIO_ROW_HEIGHT = 34; // taller than a bare GND row - it carries alt-function badges
-const GND_ROW_HEIGHT = 15;
+// Every physical header pin sits at the same pitch, whether it's a GPIO
+// (with badges) or a bare GND/power pin - a real Pico's two 20-pin rows are
+// evenly spaced regardless of what each pin does, and the two columns must
+// share that same per-row height too, or pin N (left) stops lining up with
+// pin 41-N (right) the way it does on the real board.
+const ROW_HEIGHT = 20;
 const HEADER_HEIGHT = 46; // room for the title bar + the "LED (GP25)" marker below it
 const DEBUG_ROW_HEIGHT = 44;
 
-function rowHeight(pin: BoardPin): number {
-  return pin.kind === "gpio" ? GPIO_ROW_HEIGHT : GND_ROW_HEIGHT;
-}
-
 // Cumulative {top, height} for each pin in a column, in the pico-node's own
-// coordinate space, so rows of different heights still stack cleanly.
+// coordinate space.
 function layout(pins: BoardPin[], top0: number): { pin: BoardPin; top: number; height: number }[] {
-  let top = top0;
-  return pins.map((pin) => {
-    const height = rowHeight(pin);
-    const row = { pin, top, height };
-    top += height;
-    return row;
-  });
+  return pins.map((pin, i) => ({ pin, top: top0 + i * ROW_HEIGHT, height: ROW_HEIGHT }));
 }
 
 // The board, fixed on the canvas (not draggable/deletable - see
@@ -69,7 +63,7 @@ export function PicoNode() {
 function PinRow({ row, side }: { row: { pin: BoardPin; top: number; height: number }; side: "left" | "right" }) {
   const { pin, top, height } = row;
   const badges = pin.kind === "gpio" && pin.gpio !== undefined ? boardPinLabels(pin.gpio) : [];
-  const badgeEl = badges.length > 0 && <span className="pico-node__badges">{badges.join(" / ")}</span>;
+  const badgeEl = badges.length > 0 && <span className="pico-node__badges">{""}</span>;
   const numEl = <span className="pico-node__header-num">{pin.header}</span>;
   const labelEl = <span className="pico-node__pin-label">{pin.label}</span>;
 
