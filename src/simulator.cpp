@@ -110,6 +110,8 @@ Simulator::Simulator() {
     uart1_.connect_core1(&cpu1_);
     spi0_.connect_core1(&cpu1_);
     spi1_.connect_core1(&cpu1_);
+    spi0_.connect_gpio(gpio_);
+    spi1_.connect_gpio(gpio_);
     pwm_.connect_core1(&cpu1_);
     i2c0_.connect_core1(&cpu1_);
     i2c1_.connect_core1(&cpu1_);

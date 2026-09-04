@@ -6,10 +6,26 @@
 // on_cycles(). Frame size (SSPCR0.DSS, 4-16 bits) is honoured for the
 // CPU-facing SSPDR/FIFO width.
 //
-// Not modelled: CPOL/CPHA have no observable effect (this is a whole-frame
-// behavioral model, not a bit-level clock/data waveform simulation, so
-// polarity/phase don't change anything there is to test); chip-select lines
-// (software bit-bangs CS via GPIO - out of this peripheral's scope).
+// CPOL/CPHA (datasheet 4.4.3, "Motorola SPI frame format"): when connected
+// to a real Gpio (connect_gpio() - optional, so every existing test-bench
+// use of this class without it is unaffected), SCK/MOSI are additionally
+// driven bit-by-bit onto whichever GPIO(s) currently select this
+// instance's SCK/TX role (see Gpio::driver_index()'s SPI note) - SCK idles
+// at CPOL's level and its active half-period lands before (CPHA=1) or
+// after (CPHA=0) the bit period's midpoint, matching the datasheet's
+// waveform diagrams. This is a second, purely observable layer alongside
+// the existing byte-atomic FIFO/xfer_cb_ data path below, which still
+// drives every actual register/interrupt/DMA-readiness/callback outcome
+// exactly as before - CPOL/CPHA change nothing about the bytes
+// transferred, only the electrical waveform an external observer (a test,
+// or a bit-banged PIO program) would see.
+//
+// Chip-select lines: RP2040's own SPI0/1 CSn pins (datasheet 1.4.3's F1
+// column) aren't modelled as peripheral-driven output - and shouldn't be,
+// since real firmware (pico-sdk's own spi_init() included) never uses
+// them either; CS is always software-managed via a plain SIO GPIO on this
+// chip, matching the class's own scope here.
+//
 // The test-bench hooks (feed/on_transfer/output) work in terms of the low 8
 // bits of each frame; wider frames are zero-extended/truncated there.
 #ifndef RP2040_PERIPHERALS_SPI_H
@@ -24,6 +40,7 @@
 #include "core/cpu.h"
 #include "core/interrupt_controller.h"
 #include "core/memory.h"
+#include "peripherals/gpio.h"
 
 namespace rp2040 {
 
@@ -67,6 +84,11 @@ public:
     // Wire the second Cortex-M0+ core into this peripheral's IRQ.
     void connect_core1(Cpu* c) { nvic_.connect(c); }
 
+    // Optional: drive the real SCK/MOSI waveform onto whichever GPIO(s)
+    // select this instance's SPI function (see the class comment). Every
+    // existing use of this class without calling this is unaffected.
+    void connect_gpio(Gpio& g) { gpio_ = &g; }
+
     // DREQ readiness (datasheet 2.5.3.1: DREQ_SPIn_TX/RX), gated by
     // SSPDMACR.TXDMAE/RXDMAE like real hardware.
     bool tx_dreq_ready() const;
@@ -79,10 +101,13 @@ private:
     std::uint32_t frame_bits() const;      // SSPCR0.DSS -> 4..16
     std::uint32_t bit_period_cycles() const;  // SSPCLK cycles per bit
     void tick_bit();
+    void drive_waveform(bool at_half_period);  // CPOL/CPHA-timed SCK/MOSI edges
+    void drive_pins(unsigned role, bool level) const;
 
     InterruptController nvic_;
     std::uint32_t base_;
     unsigned irq_;
+    Gpio* gpio_ = nullptr;
 
     std::deque<std::uint16_t> rx_;
     std::deque<std::uint8_t> miso_;

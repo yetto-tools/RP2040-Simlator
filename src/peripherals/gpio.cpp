@@ -17,6 +17,12 @@ int Gpio::driver_index(unsigned pin) const {
         case kFuncPio0: return kPio0;
         case kFuncPio1: return kPio1;
         case kFuncPwm:  return kPwm;
+        // SPI0/SPI1 aren't independently selectable per pin - which
+        // instance a given GPIO's F1 (SPI) function belongs to is a fixed
+        // property of the pin number itself (datasheet 1.4.3 GPIO function
+        // table: RX/CSn/SCK/TX repeats every 4 pins, alternating SPI0/SPI1
+        // every 8 - GPIO0-7 & 16-23 are SPI0, GPIO8-15 & 24-29 are SPI1).
+        case kFuncSpi:  return ((pin / 8u) % 2u == 0u) ? kSpi0 : kSpi1;
         default:        return -1;
     }
 }

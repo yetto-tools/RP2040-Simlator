@@ -26,7 +26,9 @@ public:
     };
 
     // Internal driver identity for the modelled functions.
-    enum Driver : std::uint8_t { kSio = 0, kPio0 = 1, kPio1 = 2, kPwm = 3, kNumDrivers = 4 };
+    enum Driver : std::uint8_t {
+        kSio = 0, kPio0 = 1, kPio1 = 2, kPwm = 3, kSpi0 = 4, kSpi1 = 5, kNumDrivers = 6
+    };
 
     // --- function select ------------------------------------------------
     void set_funcsel(unsigned pin, std::uint8_t funcsel);

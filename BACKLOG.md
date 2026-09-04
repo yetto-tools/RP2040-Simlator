@@ -451,7 +451,7 @@ Week 12:    PHASE 9 - Documentation & Release
 #### P4.2: UART1 Controller  [DONE]
 - [x] Second `Uart` instance (see P4.1); UART1_IRQ = IRQ21
 
-#### P4.3: SPI0 / SPI1 Controller (PL022)  [IN PROGRESS]
+#### P4.3: SPI0 / SPI1 Controller (PL022)  [DONE]
 - [x] `Spi` BusPeripheral (`src/peripherals/spi.{h,cpp}`) @ 0x4003C000 /
       0x40040000; SPI0_IRQ = IRQ18, SPI1_IRQ = IRQ19
 - [x] SSPDR write = full-duplex frame transfer: MOSI -> output log +
@@ -467,17 +467,39 @@ Week 12:    PHASE 9 - Documentation & Release
 - [x] Frame size 4-16 (SSPCR0.DSS): the TX/RX FIFOs and SSPDR honour the
       configured width; the test-bench hooks (feed/on_transfer/output)
       remain 8-bit for convenience, zero-extended/truncated at the boundary
-- [ ] CPOL/CPHA: stored in CR0 but no observable effect - this is a
-      whole-frame behavioral model, not a bit-level clock/data waveform
-      simulation, so there is nothing for polarity/phase to change (see
-      spi.h)
-- [ ] Chip-select lines (software bit-bangs CS via GPIO; out of this
-      peripheral's scope)
+- [x] CPOL/CPHA (datasheet 4.4.3): a second, purely observable waveform
+      layer alongside the existing byte-atomic FIFO/callback data path
+      (which still drives every register/interrupt/DMA outcome exactly as
+      before, unaffected). `connect_gpio()` (optional - every existing
+      test-bench use of `Spi` without it keeps working unchanged) wires a
+      `Gpio&`; `on_cycles()` now also fires at each bit period's midpoint,
+      driving SCK/MOSI bit-by-bit onto whichever GPIO(s) currently select
+      this instance's SCK/TX role. SCK idles at CPOL's level; CPHA
+      selects whether the active half-period lands before or after the
+      midpoint (matching the datasheet's mode 0-3 waveform diagrams).
+      Required teaching `Gpio::driver_index()` a new fact: which SPI
+      instance a pin's F1 function belongs to isn't independently
+      selectable - it's fixed by the pin number itself (datasheet 1.4.3's
+      function table repeats RX/CSn/SCK/TX every 4 pins, alternating
+      SPI0/SPI1 every 8) - so two new `Gpio::Driver` values, `kSpi0`/
+      `kSpi1`, were added alongside the existing `kPwm`. `Simulator` now
+      wires both real `spi0_`/`spi1_` instances to the real `Gpio`, so
+      this is observable for actual firmware (e.g. through a bit-banged
+      PIO program watching the pins), not just in an isolated test.
+- [x] Chip-select lines: investigated, found **not a gap** rather than
+      unimplemented - real RP2040 SPI genuinely has no peripheral-managed
+      CS pin in typical use (pico-sdk's own `spi_init()` doesn't touch
+      one either); CS is always software-bit-banged over a plain SIO
+      GPIO on this chip. The existing "out of this peripheral's scope"
+      note already matched real hardware behavior exactly.
 - [x] DMA request lines: `tx_dreq_ready()`/`rx_dreq_ready()`, gated by
       SSPDMACR.TXDMAE/RXDMAE and real TX/RX FIFO state, registered for
       DREQ_SPI0/1_TX/RX (16-19) in `Simulator`
-- **Tests**: `tests/unit/test_spi.cpp` (12 cases)
-- **Design**: RP2040 datasheet 4.4
+- **Tests**: `tests/unit/test_spi.cpp` (17 cases)
+- **Design**: RP2040 datasheet 4.4, 1.4.3
+- **Files**: `src/peripherals/spi.{h,cpp}`, `src/peripherals/gpio.{h,cpp}`
+      (`kSpi0`/`kSpi1` drivers), `src/simulator.cpp` (`connect_gpio()`
+      wiring)
 
 #### P4.4: SPI1 Controller  [DONE]
 - [x] Second `Spi` instance (see P4.3); SPI1_IRQ = IRQ19, wired into

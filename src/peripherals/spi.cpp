@@ -17,8 +17,15 @@ constexpr std::uint32_t kSR_BSY = 1u << 4;   // busy transmitting/receiving
 constexpr std::uint32_t kCR1_LBM = 1u << 0;
 constexpr std::uint32_t kCR1_SSE = 1u << 1;
 
+constexpr std::uint32_t kCR0_CPHA = 1u << 6;
+constexpr std::uint32_t kCR0_CPOL = 1u << 7;
+
 constexpr std::uint32_t kINT_RX = 1u << 2;   // RXIM / RXRIS (>= half full)
 constexpr std::uint32_t kINT_TX = 1u << 3;   // TXIM / TXRIS (<= half empty)
+
+// GPIO role a pin plays when its FUNCSEL selects SPI (datasheet 1.4.3's F1
+// column repeats RX/CSn/SCK/TX every 4 pins) - matches Gpio::driver_index().
+enum : unsigned { kRoleRx = 0, kRoleCs = 1, kRoleSck = 2, kRoleTx = 3 };
 
 std::uint32_t mask_n(unsigned n) { return n >= 32 ? 0xFFFFFFFFu : ((1u << n) - 1u); }
 }  // namespace
@@ -69,6 +76,41 @@ void Spi::tick_bit() {
     refresh_irq();  // TNF may have just become true
 }
 
+// One of the two SCK/MOSI edge points within a bit period (datasheet 4.4.3
+// waveform diagrams): `at_half_period` fires at the period's midpoint,
+// the other at the bit boundary (called right after tick_bit(), so
+// bits_left_ already reflects whichever bit is now in flight, if any).
+// CPHA selects which half is SCK's active window: CPOL=0/CPHA=0 mode 0
+// samples on the boundary->midpoint edge, so the active half is the
+// *second* one; CPHA=1 flips that. CPOL just remaps "active" to a level.
+void Spi::drive_waveform(bool at_half_period) {
+    if (gpio_ == nullptr) return;
+    const bool cpol = (cr0_ & kCR0_CPOL) != 0;
+    const bool cpha = (cr0_ & kCR0_CPHA) != 0;
+    const bool sck_active = bits_left_ > 0 && (cpha ? !at_half_period : at_half_period);
+    drive_pins(kRoleSck, sck_active != cpol);
+
+    if (!at_half_period) {
+        // MOSI is set up once per bit (valid for the whole period either
+        // way - only its position relative to SCK's active window differs
+        // between CPHA modes, not when it changes).
+        const bool mosi_bit = bits_left_ > 0 && ((tx_shift_ >> (bits_left_ - 1u)) & 1u) != 0;
+        drive_pins(kRoleTx, mosi_bit);
+    }
+}
+
+void Spi::drive_pins(unsigned role, bool level) const {
+    const Gpio::Driver drv = (base_ == kSpi0Base) ? Gpio::kSpi0 : Gpio::kSpi1;
+    const unsigned instance = (base_ == kSpi0Base) ? 0u : 1u;
+    for (unsigned pin = 0; pin < static_cast<unsigned>(Gpio::kNumPins); ++pin) {
+        if (gpio_->funcsel(pin) != Gpio::kFuncSpi) continue;
+        if ((pin / 8u) % 2u != instance) continue;
+        if (pin % 4u != role) continue;
+        gpio_->driver_set_pindir(drv, pin, true);
+        gpio_->driver_set_pin(drv, pin, level);
+    }
+}
+
 void Spi::on_cycles(std::uint64_t sys_cycles) {
     if ((cr1_ & kCR1_SSE) == 0) return;
     clk_accum_ += sys_cycles * spi_hz_;
@@ -76,9 +118,13 @@ void Spi::on_cycles(std::uint64_t sys_cycles) {
         clk_accum_ -= sys_hz_;
         const std::uint32_t period = bit_period_cycles();
         if (period == 0) continue;  // CPSDVSR not configured: bit-rate generator off
-        if (++bit_cycle_accum_ >= period) {
+        ++bit_cycle_accum_;
+        const std::uint32_t half = period / 2u;
+        if (half != 0u && bit_cycle_accum_ == half) drive_waveform(/*at_half_period=*/true);
+        if (bit_cycle_accum_ >= period) {
             bit_cycle_accum_ = 0;
             tick_bit();
+            drive_waveform(/*at_half_period=*/false);
         }
     }
 }

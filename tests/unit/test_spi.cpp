@@ -7,6 +7,7 @@
 #include "core/cpu.h"
 #include "core/memory.h"
 #include "core/registers.h"
+#include "peripherals/gpio.h"
 #include "peripherals/spi.h"
 
 using namespace rp2040;
@@ -146,4 +147,78 @@ TEST_CASE_FIXTURE(SpiFix, "tx/rx_dreq_ready() are gated by SSPDMACR and FIFO sta
     wr(0x08, 0x00);
     advance_frames(1);
     CHECK(spi.rx_dreq_ready());            // now has data
+}
+
+namespace {
+
+// GPIO2/3 are SPI0's SCK/TX (MOSI) per the datasheet 1.4.3 function table
+// (see Gpio::driver_index()). CPSDVSR=4, SCR=0 -> a 4-cycle bit period, so
+// on_cycles(1) single-steps through the half (2) and full (4) edge points
+// drive_waveform() fires at, with room to distinguish them individually.
+struct SpiWaveFix {
+    RegisterFile regs;
+    Memory mem;
+    Cpu cpu{regs, mem};
+    Gpio gpio;
+    Spi spi{cpu, Spi::kSpi0Base, Spi::kSpi0Irq};
+
+    SpiWaveFix() {
+        REQUIRE(spi.attach(mem));
+        spi.connect_gpio(gpio);
+        gpio.set_funcsel(2, Gpio::kFuncSpi);   // SPI0 SCK
+        gpio.set_funcsel(3, Gpio::kFuncSpi);   // SPI0 TX / MOSI
+        wr(0x00, 0x07);      // SSPCR0: DSS=8 bit, CPOL=0, CPHA=0
+        wr(0x10, 4u);        // SSPCPSR=4 -> 4 SSPCLK cycles/bit
+        wr(0x04, 1u << 1);   // SSPCR1.SSE
+    }
+    std::uint32_t rd(std::uint32_t off) { return mem.read_word(Spi::kSpi0Base + off).value; }
+    void wr(std::uint32_t off, std::uint32_t v) {
+        REQUIRE(mem.write_word(Spi::kSpi0Base + off, v) == BusStatus::Ok);
+    }
+};
+
+}  // namespace
+
+TEST_CASE_FIXTURE(SpiWaveFix, "SCK idles at CPOL=0 (the default) before any transfer") {
+    spi.on_cycles(2);   // reaches the priming period's half-point; nothing queued yet
+    CHECK_FALSE(gpio.level(2));
+}
+
+TEST_CASE_FIXTURE(SpiWaveFix, "SCK idles at CPOL=1 when set") {
+    wr(0x00, 0x07 | (1u << 7));   // SSPCR0.CPOL
+    spi.on_cycles(2);
+    CHECK(gpio.level(2));
+}
+
+TEST_CASE_FIXTURE(SpiWaveFix, "CPHA=0 puts SCK's active half-period second within each bit") {
+    wr(0x08, 0xFFu);   // any data - just need a bit actually in flight
+    spi.on_cycles(4);  // priming period: loads the frame, SCK stays idle throughout
+    CHECK_FALSE(gpio.level(2));
+    spi.on_cycles(2);  // 2 more cycles = this bit's half-point
+    CHECK(gpio.level(2));       // active now (CPOL=0 idle=low, so active=high)
+    spi.on_cycles(2);  // the bit's full boundary
+    CHECK_FALSE(gpio.level(2)); // idle again between bits
+}
+
+TEST_CASE_FIXTURE(SpiWaveFix, "CPHA=1 puts SCK's active half-period first within each bit") {
+    wr(0x00, 0x07 | (1u << 6));   // SSPCR0.CPHA
+    wr(0x08, 0xFFu);
+    spi.on_cycles(4);  // priming period boundary: the frame just loaded
+    CHECK(gpio.level(2));        // active immediately (opposite of CPHA=0)
+    spi.on_cycles(2);  // this bit's half-point
+    CHECK_FALSE(gpio.level(2));  // back to idle already
+}
+
+TEST_CASE_FIXTURE(SpiWaveFix, "MOSI carries the frame's bits MSB-first, matching the byte written") {
+    wr(0x08, 0xB0u);   // 1011_0000
+    spi.on_cycles(4);  // priming period: loads the frame and sets up bit 7 (MSB) on MOSI
+
+    std::vector<bool> bits;
+    for (int i = 0; i < 8; ++i) {
+        spi.on_cycles(2);              // this bit's half-point: MOSI is stable and readable
+        bits.push_back(gpio.level(3));
+        spi.on_cycles(2);              // this bit's full boundary: advances to the next bit
+    }
+    const std::vector<bool> expect = {true, false, true, true, false, false, false, false};
+    CHECK(bits == expect);
 }
