@@ -104,6 +104,13 @@ constexpr std::uint32_t kPLL_CS_LOCK = 1u << 31;
 constexpr std::uint32_t kPLL_CS_BYPASS = 1u << 8;
 }  // namespace
 
+void Pll::reset() {
+    cs_ = 0;
+    pwr_ = 0xFFFFFFFFu;
+    fbdiv_ = 0;
+    prim_ = 0x00070700u;
+}
+
 BusResult<std::uint32_t> Pll::reg_read(std::uint32_t reg, BusWidth) {
     switch (reg) {
         case kPLL_CS: {

@@ -105,6 +105,23 @@ void Adc::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+void Adc::reset() {
+    fifo_.clear();
+    result_ = 0;
+    cs_ = 0;
+    fcs_ = 0;
+    div_ = 0;
+    inte_ = 0;
+    intf_ = 0;
+    adc_clk_accum_ = 0;
+    conv_countdown_ = 0;
+    converting_ = false;
+    refresh_irq();
+    // input_ is the test bench's simulated analog stimulus (the "world"
+    // outside the ADC, not one of its registers) - left alone, same as a
+    // real GPIO pad's voltage doesn't change just because the ADC reset.
+}
+
 BusResult<std::uint32_t> Adc::reg_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kCS: return {cs_, BusStatus::Ok};

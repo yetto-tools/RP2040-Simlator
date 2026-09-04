@@ -602,7 +602,7 @@ Week 12:    PHASE 9 - Documentation & Release
 - **Priority**: HIGH
 - **Dependencies**: P1.4
 
-#### P5.3: Watchdog + RESETS  [IN PROGRESS]
+#### P5.3: Watchdog + RESETS  [DONE]
 - [x] `Watchdog` (`src/peripherals/watchdog.{h,cpp}`) @ 0x40058000:
       LOAD/CTRL down-counter (decrements by 2 per us per the HW quirk),
       feed via LOAD, ENABLE, CTRL.TRIGGER force-reset, REASON (TIMER/FORCE),
@@ -618,14 +618,72 @@ Week 12:    PHASE 9 - Documentation & Release
       PROC1 (bit 16) set - `Watchdog::set_wdsel_provider()`. This is the one
       PSM.WDSEL bit with meaningful behaviour here; the other 16 (SRAM
       banks, ROM, XIP, clocks, ...) have no "held in reset" concept to model
-- [ ] Pause-on-debug (PAUSE_DBG0/1/JTAG): needs a "core halted for debug"
-      state on Cpu/GdbStub that does not exist yet - real debugger-halt
-      infrastructure, not just a Watchdog change
-- [ ] RESETS_WDSEL itself is stored but not connected to anything: doing so
-      for real needs a reset() method on every one of the ~25 affected
-      peripheral classes
-- **Tests**: `tests/unit/test_watchdog.cpp` (6 cases)
+- [x] RESETS_WDSEL wired for real: `BusPeripheral::reset()` (`core/bus.h`),
+      a virtual defaulting to a no-op, overridden by every peripheral class
+      that has a RESETS_RESET/WDSEL bit *and* meaningful register state to
+      reset - `Adc`, `Dma`, `I2c`, `IoBank0`, `PadsBank0`, `Pll`, `Pwm`,
+      `Rtc`, `Spi`, `Timer`, `Uart`, `UsbCtrl`, and `PioRegisters` (which
+      also resets the underlying `PioBlock` - program memory, IRQ register,
+      both clock dividers, and every SM's *full* datapath via the new
+      `StateMachine::full_reset()`, distinct from `restart()` == CTRL.
+      SM_RESTART, which datasheet 3.5.4 documents as deliberately leaving
+      X/Y, the FIFOs and the config registers alone). Each `reset()` matches
+      exactly what a freshly-constructed instance looks like - restoring
+      the same defaults the (already-tested) constructor already
+      establishes, rather than re-deriving POR values independently and
+      risking a transcription error against the datasheet. Simulator
+      wiring/callbacks (Gpio&/Cpu*/Memory& references, `on_transmit`/
+      `on_transfer`/`set_slave`/`set_dreq_source`-style test-bench hooks,
+      clock-Hz values the clock tree pushes) are deliberately left alone -
+      they stand in for physical wires/external inputs, which a peripheral
+      reset doesn't disconnect on real hardware either.
+      `Watchdog::on_peripheral_reset()` (a second callback alongside the
+      existing PSM_WDSEL-driven `on_reset()`, fed by a new
+      `set_resets_wdsel_provider()`) fires on every watchdog reset with the
+      live RESETS_WDSEL value; `Simulator`'s wiring maps each of its bits
+      (datasheet 2.14.1's RESETS_RESET field - ADC=0, DMA=2, I2C0/1=3/4,
+      IO_BANK0=5, PADS_BANK0=8, PIO0/1=10/11, PLL_SYS/USB=12/13, PWM=14,
+      RTC=15, SPI0/1=16/17, TIMER=21, UART0/1=22/23, USBCTRL=24) to the
+      matching peripheral's `reset()`. `IoBank0::reset()` goes one step
+      further than a plain register-clear: it also re-applies FUNCSEL=0/
+      no-override to every pin's *live* `Gpio` state, since firmware may
+      already have muxed pins away from GPIO/SIO control before this fires
+      - leaving them stuck there (registers claiming "reset" while the pin
+      still behaves as configured) would defeat the feature's actual real-
+      hardware purpose of recovering a hung peripheral's pins. The 6
+      bits with no dedicated register-state class here (BUSCTRL/IO_QSPI/
+      JTAG/PADS_QSPI/SYSCFG/TBMAN) and SYSINFO (no mutable state to reset)
+      are simply absent from the mapping; `BusPeripheral::reset()`'s
+      default no-op covers them if any is ever added.
+- [x] Pause-on-debug (PAUSE_DBG0/1/JTAG): investigated, found **not
+      applicable** to this simulator's execution model rather than merely
+      unimplemented. `Watchdog::on_cycles()` only advances when
+      `Simulator::step()` is called, which only happens while something
+      (the CLI run loop, GDB stub's continue handler, `DebugSession`'s
+      background thread) is actively stepping the CPU - there is no
+      independent wall clock (CLAUDE.md/CONTEXT.md: determinism and
+      reproducibility are hard requirements, not aspirations). So the
+      watchdog is *already* unconditionally paused for the entire duration
+      of any debug halt, regardless of what PAUSE_DBG0/1/JTAG say -
+      implementing the bits as real hardware does would require decoupling
+      the watchdog's tick source from cycle-accounting into a genuine
+      wall-clock timer, which would then need gating *off* by these same
+      bits to reproduce today's (already-correct-for-this-model) behaviour.
+      That's a net-new wall-clock subsystem in service of undoing itself -
+      not a missing feature, an architectural mismatch. Left `[ ]` below as
+      a documented non-goal rather than closed as done or silently dropped.
+- [ ] Pause-on-debug (PAUSE_DBG0/1/JTAG) as literal register bits: see
+      above - not planned, kept here only so the datasheet field itself
+      isn't mistaken for an oversight
+- **Tests**: `tests/unit/test_watchdog.cpp` (6 cases),
+      `tests/unit/test_resets_wdsel.cpp` (6 cases: selective per-peripheral
+      reset via UART0/1, PWM, DMA, PIO0, and that a plain non-watchdog
+      reset leaves RESETS_WDSEL-selected peripherals alone)
 - **Design**: RP2040 datasheet 4.7, 2.13, 2.14
+- **Files**: `src/core/bus.h` (`BusPeripheral::reset()`), `src/peripherals/
+      watchdog.{h,cpp}`, `src/peripherals/resets.h` (`wdsel()` getter),
+      `src/simulator.cpp` (the bit-to-peripheral wiring), every peripheral
+      listed above, `src/pio/{pio_block,state_machine}.{h,cpp}`
 
 > **Cross-cutting:** `src/core/atomic_peripheral.h` provides the shared
 > `AtomicPeripheral` base (span 0x4000; XOR/SET/CLR at +0x1000/2000/3000 as a

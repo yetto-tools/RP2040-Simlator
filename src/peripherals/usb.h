@@ -37,6 +37,7 @@ public:
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // --- virtual host (test bench) ------------------------------------
     void host_reset();

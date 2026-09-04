@@ -31,6 +31,7 @@ public:
 
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     void on_cycles(std::uint64_t sys_cycles);
 

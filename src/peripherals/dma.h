@@ -55,6 +55,7 @@ public:
 
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // Approximate pacing for an *unregistered* peripheral DREQ (clocks per
     // element). Default 2.

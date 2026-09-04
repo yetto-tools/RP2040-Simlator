@@ -40,6 +40,17 @@ public:
     // tree/Simulator wires this to the PSM register block).
     void set_wdsel_provider(std::function<std::uint32_t()> fn) { wdsel_provider_ = std::move(fn); }
 
+    // Called on every reset with the live RESETS_WDSEL value (datasheet
+    // 2.14: a *different* register from PSM_WDSEL above - scopes ~25
+    // individual peripherals, e.g. UART0/1, rather than core1). The
+    // Simulator resets whichever peripherals that mask selects.
+    void on_peripheral_reset(std::function<void(std::uint32_t resets_wdsel)> cb) {
+        periph_reset_cb_ = std::move(cb);
+    }
+    void set_resets_wdsel_provider(std::function<std::uint32_t()> fn) {
+        resets_wdsel_provider_ = std::move(fn);
+    }
+
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
 
@@ -69,6 +80,8 @@ private:
     std::array<std::uint32_t, 8> scratch_{};
     std::function<void(bool reset_core1)> reset_cb_;
     std::function<std::uint32_t()> wdsel_provider_;
+    std::function<void(std::uint32_t resets_wdsel)> periph_reset_cb_;
+    std::function<std::uint32_t()> resets_wdsel_provider_;
 };
 
 }  // namespace rp2040

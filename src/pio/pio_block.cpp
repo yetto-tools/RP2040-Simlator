@@ -28,6 +28,18 @@ void PioBlock::set_clkdiv(unsigned sm, std::uint16_t int_part, std::uint8_t frac
     clkacc_[sm] = 0;
 }
 
+void PioBlock::reset() {
+    program_.fill(0);
+    irq_ = 0;
+    for (unsigned i = 0; i < kNumSm; ++i) {
+        clkdiv_[i] = 1u * 256u;   // matches the constructor: reset divide-by-1
+        clkacc_[i] = 0;
+        last_outcome_[i] = {};
+        instr_retired_[i] = 0;
+        sm_[i].full_reset();
+    }
+}
+
 void PioBlock::tick() {
     for (unsigned i = 0; i < kNumSm; ++i) {
         last_outcome_[i] = {};

@@ -8,6 +8,14 @@ constexpr std::uint32_t kPadPde = 1u << 2;
 constexpr std::uint32_t kGpio0 = 0x04;  // GPIO0..29 at +0x04, +0x08, ...
 }  // namespace
 
+void PadsBank0::reset() {
+    voltage_select_ = 0;
+    pad_.fill(0x56u);
+    for (unsigned pin = 0; pin < Gpio::kNumPins; ++pin) {
+        gpio_.set_pulls(pin, (0x56u & kPadPue) != 0, (0x56u & kPadPde) != 0);
+    }
+}
+
 BusResult<std::uint32_t> PadsBank0::reg_read(std::uint32_t reg, BusWidth) {
     if (reg == 0x00) return {voltage_select_, BusStatus::Ok};
     if (reg >= kGpio0 && reg < kGpio0 + Gpio::kNumPins * 4u) {

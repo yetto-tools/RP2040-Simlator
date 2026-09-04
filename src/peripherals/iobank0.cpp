@@ -67,6 +67,28 @@ void IoBank0::refresh_irq() {
     }
 }
 
+void IoBank0::reset() {
+    // Unlike a normal reg_write(), also re-applies FUNCSEL=0/no-override to
+    // every pin's live Gpio state: firmware may already have muxed pins away
+    // from GPIO/SIO control before this fires, and a WDSEL-scoped reset that
+    // left them stuck there (register read-back claiming "reset" while the
+    // pin still behaves as configured) would defeat this feature's actual
+    // real-hardware purpose - recovering a hung peripheral's pins.
+    ctrl_.fill(0);
+    for (unsigned pin = 0; pin < Gpio::kNumPins; ++pin) {
+        gpio_.set_funcsel(pin, 0);
+        gpio_.set_overrides(pin, 0, 0, 0, 0);
+    }
+    intr_.fill(0);
+    inte_[0].fill(0);
+    inte_[1].fill(0);
+    intf_[0].fill(0);
+    intf_[1].fill(0);
+    prev_level_ = 0;
+    primed_ = false;
+    refresh_irq();
+}
+
 BusResult<std::uint32_t> IoBank0::reg_read(std::uint32_t offset, BusWidth) {
     // Each GPIO occupies 8 bytes: +0 = GPIOx_STATUS, +4 = GPIOx_CTRL.
     if (offset < Gpio::kNumPins * 8u) {

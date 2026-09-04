@@ -57,6 +57,35 @@ Simulator::Simulator() {
         }
     });
     watchdog_.set_wdsel_provider([this] { return psm_.reg_read(0x08u, BusWidth::Word).value; });
+    watchdog_.set_resets_wdsel_provider([this] { return resets_.wdsel(); });
+    watchdog_.on_peripheral_reset([this](std::uint32_t wdsel) {
+        // RESETS_RESET bit assignments (datasheet 2.14.1 List of Registers):
+        // the same 25-bit field RESETS_WDSEL uses to pick which of these a
+        // watchdog-triggered reset also resets, on top of the CPU core(s)
+        // (see the on_reset() callback above). Bits with no dedicated
+        // register-state class in this simulator (BUSCTRL/IO_QSPI/JTAG/
+        // PADS_QSPI/SYSCFG/TBMAN) - and SYSINFO, which has no mutable state
+        // to reset - are simply absent below; BusPeripheral::reset()'s
+        // default no-op covers them if ever added.
+        if (wdsel & (1u << 0))  adc_.reset();
+        if (wdsel & (1u << 2))  dma_.reset();
+        if (wdsel & (1u << 3))  i2c0_.reset();
+        if (wdsel & (1u << 4))  i2c1_.reset();
+        if (wdsel & (1u << 5))  iobank_.reset();
+        if (wdsel & (1u << 8))  pads_.reset();
+        if (wdsel & (1u << 10)) pio0_regs_.reset();
+        if (wdsel & (1u << 11)) pio1_regs_.reset();
+        if (wdsel & (1u << 12)) pll_sys_.reset();
+        if (wdsel & (1u << 13)) pll_usb_.reset();
+        if (wdsel & (1u << 14)) pwm_.reset();
+        if (wdsel & (1u << 15)) rtc_.reset();
+        if (wdsel & (1u << 16)) spi0_.reset();
+        if (wdsel & (1u << 17)) spi1_.reset();
+        if (wdsel & (1u << 21)) timer_.reset();
+        if (wdsel & (1u << 22)) uart0_.reset();
+        if (wdsel & (1u << 23)) uart1_.reset();
+        if (wdsel & (1u << 24)) usb_.reset();
+    });
     scs_.on_system_reset([this] {
         cpu_.reset();
         cpu1_.reset();

@@ -46,6 +46,20 @@ void Timer::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+void Timer::reset() {
+    accum_ = 0;
+    counter_ = 0;
+    write_staging_hi_ = 0;
+    read_latch_hi_ = 0;
+    paused_ = false;
+    alarm_.fill(0);
+    armed_ = 0;
+    intr_ = 0;
+    inte_ = 0;
+    intf_ = 0;
+    refresh_irqs();
+}
+
 BusResult<std::uint32_t> Timer::reg_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kTIMELR:

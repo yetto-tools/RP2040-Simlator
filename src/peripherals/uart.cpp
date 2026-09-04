@@ -148,6 +148,30 @@ void Uart::refresh_irq() {
     else          nvic_.clear_pending(irq_);
 }
 
+void Uart::reset() {
+    rx_.clear();
+    rx_wire_.clear();
+    tx_fifo_.clear();
+    lcr_h_ = 0;
+    dmacr_ = 0;
+    cr_ = 0x300;
+    imsc_ = 0;
+    ris_ = 0;
+    last_rx_err_ = 0;
+    oe_ = false;
+    ibrd_ = 0;
+    fbrd_ = 0;
+    clk_accum_ = 0;
+    bit_accum_x64_ = 0;
+    tx_bits_left_ = 0;
+    tx_shift_ = 0;
+    rx_bits_left_ = 0;
+    rx_shift_ = RxEntry{};
+    refresh_irq();
+    // tx_log_ (a test-bench inspection log, not a register) and tx_cb_
+    // (wiring) are left alone.
+}
+
 BusResult<std::uint32_t> Uart::bus_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kUARTDR: {

@@ -31,6 +31,17 @@ void StateMachine::restart() {
     irq_wait_raised_ = false;
 }
 
+void StateMachine::full_reset() {
+    cfg = SmConfig{};
+    tx = PioFifo{};
+    rx = PioFifo{};
+    x = 0;
+    y = 0;
+    enabled_ = false;
+    cur_ = PioInstr{};
+    restart();  // PC/OSR/ISR/shift counts/delay/stall, against the now-reset cfg
+}
+
 unsigned StateMachine::delay_of(const PioInstr& in) const {
     unsigned ss_bits = cfg.sideset_count + (cfg.sideset_opt ? 1u : 0u);
     if (ss_bits >= 5) return 0;

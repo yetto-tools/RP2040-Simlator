@@ -86,6 +86,23 @@ void Rtc::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+void Rtc::reset() {
+    clkdiv_m1_ = 46874u;
+    setup0_ = 0;
+    setup1_ = 0;
+    enabled_ = false;
+    now_ = DateTime{};
+    irq_setup0_ = 0;
+    irq_setup1_ = 0;
+    intr_ = 0;
+    inte_ = 0;
+    intf_ = 0;
+    sub_accum_ = 0;
+    div_counter_ = 0;
+    alarm_matched_ = false;
+    check_alarm();
+}
+
 BusResult<std::uint32_t> Rtc::reg_read(std::uint32_t reg, BusWidth) {
     switch (reg) {
         case kCLKDIV_M1:   return {clkdiv_m1_, BusStatus::Ok};

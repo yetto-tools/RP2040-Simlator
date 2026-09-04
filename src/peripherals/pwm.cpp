@@ -79,6 +79,16 @@ void Pwm::on_cycles(std::uint64_t sys_cycles) {
     refresh_irq();
 }
 
+void Pwm::reset() {
+    slice_.fill(Slice{});
+    enable_ = 0;
+    intr_ = 0;
+    inte_ = 0;
+    intf_ = 0;
+    for (unsigned s = 0; s < kNumSlices; ++s) update_outputs(s);
+    refresh_irq();
+}
+
 BusResult<std::uint32_t> Pwm::reg_read(std::uint32_t offset, BusWidth) {
     if (offset < kNumSlices * kSliceStride) {
         const unsigned s = offset / kSliceStride;

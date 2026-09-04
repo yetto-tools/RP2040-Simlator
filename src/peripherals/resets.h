@@ -25,6 +25,10 @@ public:
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
 
+    // Live RESETS_WDSEL value (queried by Watchdog on every reset - see
+    // Simulator's set_resets_wdsel_provider() wiring).
+    std::uint32_t wdsel() const { return wdsel_; }
+
 private:
     std::uint32_t reset_ = 0x01FFFFFFu;  // reset value: everything held in reset
     std::uint32_t wdsel_ = 0;

@@ -106,6 +106,23 @@ void UsbCtrl::host_out_ep0(const std::vector<std::uint8_t>& data) {
 
 // --- MMIO ------------------------------------------------------------
 
+void UsbCtrl::reset() {
+    dpram_.fill(0);
+    addr_endp_ = 0;
+    main_ctrl_ = 0;
+    sie_ctrl_ = 0;
+    sie_status_ = 0;
+    buff_status_ = 0;
+    ep_stall_arm_ = 0;
+    ep_status_stall_nak_ = 0;
+    usb_pwr_ = 0;
+    muxing_ = 0;
+    inte_ = 0;
+    intf_ = 0;
+    sof_ = 0;
+    refresh_irq();
+}
+
 BusResult<std::uint32_t> UsbCtrl::bus_read(std::uint32_t offset, BusWidth) {
     if (offset < kDpramSize) return {dpram_rd(offset), BusStatus::Ok};
     if (offset < kRegBase)   return {0u, BusStatus::Ok};   // gap

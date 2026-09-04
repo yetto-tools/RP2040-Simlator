@@ -40,6 +40,7 @@ public:
 
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // Test bench: drive an input with a raw 12-bit code (0..4095).
     void set_input(unsigned channel, std::uint16_t raw12);

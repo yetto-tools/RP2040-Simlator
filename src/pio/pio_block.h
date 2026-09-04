@@ -48,6 +48,12 @@ public:
     // ticks this cycle executes one instruction.
     void tick();
 
+    // Power-on-reset: clears program memory, the IRQ register, both clock
+    // dividers, and fully resets every SM's datapath (see
+    // StateMachine::full_reset() - unlike CTRL.SM_RESTART, this also clears
+    // X/Y, the FIFOs, and the full SMx_EXECCTRL/SHIFTCTRL/PINCTRL config).
+    void reset();
+
     // Debug/inspection: the last per-SM tick outcome and the running count of
     // instructions each SM has retired.
     StateMachine::TickOutcome last_outcome(unsigned sm) const {

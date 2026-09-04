@@ -121,6 +121,20 @@ void PioRegisters::poll_interrupts() {
     if (mis1 != 0) nvic_.pend_exception(nvic_irq0_ + 1); else nvic_.clear_pending(nvic_irq0_ + 1);
 }
 
+void PioRegisters::reset() {
+    ctrl_ = 0;
+    clkdiv_.fill(0);
+    execctrl_.fill(0);
+    shiftctrl_.fill(0);
+    pinctrl_.fill(0);
+    irq0_inte_ = 0;
+    irq0_intf_ = 0;
+    irq1_inte_ = 0;
+    irq1_intf_ = 0;
+    fdebug_ = 0;
+    block_.reset();
+}
+
 std::uint32_t PioRegisters::read_flevel() const {
     std::uint32_t v = 0;
     for (unsigned i = 0; i < PioBlock::kNumSm; ++i) {

@@ -79,6 +79,13 @@ public:
     // and the FIFOs are left alone (matching hardware).
     void restart();
 
+    // Full power-on-reset of this SM: everything restart() does, plus cfg
+    // back to SmConfig{} defaults, X/Y cleared, both FIFOs emptied (and
+    // un-joined - see PioFifo), and enabled_ cleared. Distinct from
+    // restart() (== CTRL.SM_RESTART), which datasheet 3.5.4 documents as
+    // deliberately leaving X/Y, the FIFOs and the config registers alone.
+    void full_reset();
+
     // Advance by one post-divider clock.
     TickOutcome tick();
 

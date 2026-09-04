@@ -94,6 +94,29 @@ void I2c::refresh_irq() {
     else                               nvic_.clear_pending(irq_);
 }
 
+void I2c::reset() {
+    con_ = 0x65;
+    tar_ = 0;
+    enabled_ = false;
+    dma_cr_ = 0;
+    tx_cmds_.clear();
+    rx_.clear();
+    raw_intr_ = 0;
+    intr_mask_ = 0;
+    tx_abrt_source_ = 0;
+    ss_hcnt_ = 0;
+    ss_lcnt_ = 0;
+    fs_hcnt_ = 0;
+    fs_lcnt_ = 0;
+    clk_accum_ = 0;
+    byte_cycles_left_ = 0;
+    stretch_cycles_ = 0;
+    refresh_irq();
+    // slave_addr_/slave_/on_stop_ stand in for whatever's wired to the bus
+    // (simulator wiring, not this controller's own register state) - left
+    // alone, same as DMA's dreq_ready_ or UART's tx_cb_.
+}
+
 BusResult<std::uint32_t> I2c::bus_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kIC_CON: return {con_, BusStatus::Ok};

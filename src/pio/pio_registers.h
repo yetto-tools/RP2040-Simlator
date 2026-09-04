@@ -48,6 +48,10 @@ public:
 
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+    // Restores the register shadow *and* the underlying PioBlock (program
+    // memory, IRQ register, both clock dividers, all 4 SMs' full datapath -
+    // see PioBlock::reset()) to power-on-reset state.
+    void reset() override;
 
 private:
     void write_ctrl(std::uint32_t value);

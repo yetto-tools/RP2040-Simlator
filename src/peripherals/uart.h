@@ -57,6 +57,7 @@ public:
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // --- test-bench / CLI hooks ---------------------------------------
     // Queue a byte from an external device onto the wire; it lands in the RX

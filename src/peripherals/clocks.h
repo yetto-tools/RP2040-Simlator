@@ -73,6 +73,7 @@ public:
     bool attach(Memory& mem) { return mem.attach_peripheral(base_, kSize, this); }
     BusResult<std::uint32_t> reg_read(std::uint32_t reg, BusWidth w) override;
     BusStatus reg_write(std::uint32_t reg, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // Derived configuration (datasheet 2.18.2): VCO = ref * FBDIV,
     // output = VCO / (POSTDIV1 * POSTDIV2). Returns 0 when the PLL is not

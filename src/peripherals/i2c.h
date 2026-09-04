@@ -40,6 +40,7 @@ public:
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // Register a 7-bit slave. On a write transaction `byte` is the data and
     // the callback returns whether it ACKed; on a read it fills `byte` and

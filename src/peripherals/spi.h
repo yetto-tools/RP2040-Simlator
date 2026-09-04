@@ -44,6 +44,7 @@ public:
 
     BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) override;
     BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) override;
+    void reset() override;
 
     // Test bench: bytes an attached slave returns on MISO (consumed one per
     // completed frame, once the callback is not set; zero-extended to the

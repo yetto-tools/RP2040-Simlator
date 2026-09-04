@@ -49,6 +49,18 @@ public:
 
     virtual BusResult<std::uint32_t> bus_read(std::uint32_t offset, BusWidth w) = 0;
     virtual BusStatus bus_write(std::uint32_t offset, std::uint32_t value, BusWidth w) = 0;
+
+    // Restore this peripheral's register-backed state to its power-on-reset
+    // defaults - the same state a freshly-constructed instance starts in.
+    // Does NOT touch simulator wiring (references to Gpio/Cpu/Memory,
+    // registered callbacks, clock-Hz values pushed by the clock tree): those
+    // stand in for physical wires/external inputs, which a peripheral reset
+    // doesn't disconnect on real hardware either. Default no-op, for
+    // peripherals with no meaningful register state (or not in the RESETS
+    // block's 25-bit RESET/WDSEL field at all - see resets.h) to leave
+    // unoverridden. Driven by RESETS_WDSEL on a watchdog-triggered reset
+    // (see Watchdog::fire_reset(), Simulator's wiring of it).
+    virtual void reset() {}
 };
 
 // Human-readable status name, for logs, traces and test failure messages.

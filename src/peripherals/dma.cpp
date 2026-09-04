@@ -265,6 +265,22 @@ void Dma::on_cycles(std::uint64_t sys_cycles) {
     }
 }
 
+void Dma::reset() {
+    chan_.fill(Channel{});
+    intr_ = 0;
+    inte_.fill(0);
+    intf_.fill(0);
+    pacing_timer_.fill(0);
+    sniff_ctrl_ = 0;
+    sniff_data_ = 0;
+    dreq_divisor_ = 2;
+    chain_depth_ = 0;
+    refresh_irqs();
+    // dreq_ready_ is simulator wiring (set_dreq_source(), registered once by
+    // Simulator at startup against each peripheral's live FIFO state) - not
+    // DMA's own register state, left alone.
+}
+
 BusResult<std::uint32_t> Dma::reg_read(std::uint32_t offset, BusWidth) {
     if (offset < kNumChannels * 0x40u) {
         const unsigned ch = offset / 0x40u;

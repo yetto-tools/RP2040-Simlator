@@ -23,8 +23,11 @@ void Watchdog::fire_reset(std::uint32_t reason_bit) {
     reason_ = reason_bit;   // SCRATCH is preserved across the reset
     counter_ = 0;
     enabled_ = false;
-    const std::uint32_t wdsel = wdsel_provider_ ? wdsel_provider_() : 0u;
-    if (reset_cb_) reset_cb_((wdsel & kPsmWdselProc1) != 0);
+    const std::uint32_t psm_wdsel = wdsel_provider_ ? wdsel_provider_() : 0u;
+    if (reset_cb_) reset_cb_((psm_wdsel & kPsmWdselProc1) != 0);
+    if (periph_reset_cb_) {
+        periph_reset_cb_(resets_wdsel_provider_ ? resets_wdsel_provider_() : 0u);
+    }
 }
 
 void Watchdog::on_cycles(std::uint64_t sys_cycles) {

@@ -113,6 +113,23 @@ void Spi::refresh_irq() {
     else                           nvic_.clear_pending(irq_);
 }
 
+void Spi::reset() {
+    rx_.clear();
+    tx_fifo_.clear();
+    cr0_ = 0;
+    cr1_ = 0;
+    cpsdvsr_ = 0;
+    imsc_ = 0;
+    dmacr_ = 0;
+    clk_accum_ = 0;
+    bit_cycle_accum_ = 0;
+    bits_left_ = 0;
+    tx_shift_ = 0;
+    refresh_irq();
+    // miso_ (queued external-device response bytes), mosi_log_ (a test-bench
+    // inspection log) and xfer_cb_ (wiring) are left alone.
+}
+
 BusResult<std::uint32_t> Spi::bus_read(std::uint32_t offset, BusWidth) {
     switch (offset) {
         case kSSPDR: {
