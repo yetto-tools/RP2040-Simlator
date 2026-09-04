@@ -51,7 +51,7 @@ void St7789::handle_command(std::uint8_t byte) {
             // A real reset takes ~120ms and re-blanks GRAM; timing isn't
             // observable through a framebuffer view, but clearing it (and
             // the address window) matches what the user would actually see.
-            std::fill(fb_.begin(), fb_.end(), 0u);
+            std::fill(fb_.begin(), fb_.end(), std::uint16_t{0});
             x0_ = 0; x1_ = static_cast<std::uint16_t>(width_ - 1);
             y0_ = 0; y1_ = static_cast<std::uint16_t>(height_ - 1);
             bgr_ = false;

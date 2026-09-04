@@ -328,7 +328,7 @@ private:
         const unsigned opt_bit = out_.side_set_opt ? 1u : 0u;
         const unsigned delay_bits = 5u - ss_bits - opt_bit;
 
-        if (delay < 0 || delay >= (1 << delay_bits))
+        if (delay < 0 || delay >= (std::int64_t{1} << delay_bits))
             die("delay out of range for the configured side-set width");
 
         std::uint16_t field = static_cast<std::uint16_t>(delay);
@@ -338,7 +338,7 @@ private:
             return field;
         }
         if (side) {
-            if (*side < 0 || *side >= (1 << ss_bits))
+            if (*side < 0 || *side >= (std::int64_t{1} << ss_bits))
                 die("side-set value out of range");
             field = static_cast<std::uint16_t>(field |
                     (static_cast<std::uint16_t>(*side) << delay_bits));

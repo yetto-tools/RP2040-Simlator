@@ -227,7 +227,7 @@ DecodedInstr decode_misc16(std::uint16_t instr) {
         case 0b0100:
         case 0b0101: {  // PUSH
             d.op = Mnemonic::PUSH;
-            d.register_list = static_cast<std::uint16_t>((bit(instr, 8) << 14) | (instr & 0xFFu));
+            d.register_list = static_cast<std::uint16_t>((static_cast<unsigned>(bit(instr, 8)) << 14) | (instr & 0xFFu));
             return d;
         }
         case 0b0110: {  // CPS (only valid misc encoding in this row for ARMv6-M)
@@ -250,7 +250,7 @@ DecodedInstr decode_misc16(std::uint16_t instr) {
         case 0b1100:
         case 0b1101: {  // POP
             d.op = Mnemonic::POP;
-            d.register_list = static_cast<std::uint16_t>((bit(instr, 8) << 15) | (instr & 0xFFu));
+            d.register_list = static_cast<std::uint16_t>((static_cast<unsigned>(bit(instr, 8)) << 15) | (instr & 0xFFu));
             return d;
         }
         case 0b1110:  // BKPT
