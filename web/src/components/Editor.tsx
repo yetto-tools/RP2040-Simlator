@@ -109,7 +109,7 @@ export function Editor({
         "editorLineNumber.activeForeground": "#93a89b",
         "editor.lineHighlightBackground": "#17201a",
         "editorGutter.background": "#0b100e",
-        "editorCursor.foreground": "#52e0c4",
+        "editorCursor.foreground": "#1D98EE",
         "editor.selectionBackground": "#33493c",
         "editorWidget.background": "#121915",
         "editorWidget.border": "#223129",

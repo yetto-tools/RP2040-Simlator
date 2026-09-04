@@ -2,28 +2,34 @@
   color-scheme: dark;
 
   /* Surfaces */
-  --bg-canvas: #0b100e;
-  --bg-panel: #121915;
-  --bg-panel-raised: #17201a;
-  --bg-inset: #080b09;
-  --bg-hover: #1c261f;
+  --bg-canvas: #121314;
+  --bg-panel: #191A1B; /*#121915;*/
+  --bg-panel-raised: #191A1B; /*#17201a;*/
+  --bg-inset: #08090b;
+  --bg-hover: #1c2326;
 
   /* Lines */
-  --border: #223129;
-  --border-strong: #33493c;
+  --border: #222931;
+  --border-strong: #333f49;
 
   /* Text */
   --text-primary: #e8efe9;
-  --text-secondary: #93a89b;
-  --text-tertiary: #56685c;
+  --text-secondary: #939ea8;
+  --text-tertiary:  /*#56685c;*/ #706c7e;
 
   /* Accents */
-  --accent-trace: #52e0c4;
-  --accent-trace-dim: rgba(82, 224, 196, 0.16);
+  --accent-trace: #1D98EE;
+  --accent-trace-dim: rgba(82, 136, 224, 0.16);
   --accent-power: #f5b942;
   --accent-power-dim: rgba(245, 185, 66, 0.16);
   --accent-fault: #ff6f6f;
   --accent-fault-dim: rgba(255, 111, 111, 0.16);
+  
+  /* vscode  */
+  --vscode-editorWidget-border: #222831 !important;
+  --vscode-editor-selectionBackground : #334349 !important;
+  --vscode-editor-inactiveSelectionBackground: #3a3d41 !important;
+  
 
   /* Type */
   --font-sans: "IBM Plex Sans", system-ui, "Segoe UI", Roboto, sans-serif;
@@ -828,15 +834,15 @@ button:disabled {
    compact-but-still-legible version of the same layout). */
 .pico-node {
   position: relative;
-  width: 460px;
-  background: var(--bg-panel-raised);
+  width: 165px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
+  background-color: #006837;
 }
 .pico-node__label {
   padding: 8px 0;
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
@@ -853,19 +859,22 @@ button:disabled {
   pointer-events: none;
 }
 
-/* One physical header pin - GPIO rows are taller (they carry badges), GND/
-   power rows are a thin bare strip. position:absolute (top/height set
-   inline by PicoNode.tsx's layout()) doubles as the Handle's containing
-   block, so the Handle centers on the row via plain top:50% (its own
-   default react-flow styling) without any extra positioning math. */
+/* One physical header pin. Every row is the same height regardless of kind
+   (see ROW_HEIGHT in PicoNode.tsx) - the real board's two 20-pin edges are
+   evenly spaced no matter what each pin does, and both columns must share
+   that pitch or pin N (left) stops lining up with pin 41-N (right).
+   position:absolute (top/height set inline by layout()) doubles as the
+   Handle's containing block, so the Handle centers on the row via plain
+   top:50% (its own default react-flow styling) without extra positioning
+   math. */
 .pico-node__row {
   position: absolute;
   left: 0;
   right: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 16px;
+  gap: 4px;
+  padding: 0 14px;
   font-family: var(--font-mono);
 }
 .pico-node__row--left {
@@ -889,13 +898,13 @@ button:disabled {
 .pico-node__row--gnd .pico-node__pin-label,
 .pico-node__row--power .pico-node__pin-label {
   font-weight: 400;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .pico-node__header-num {
   min-width: 14px;
   text-align: center;
-  font-size: 8px;
-  color: var(--text-tertiary);
+  font-size: 10px;
+  color: var(--text-primary);
 }
 .pico-node__badges {
   font-size: 8px;
@@ -903,7 +912,7 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 170px;
+  max-width: 128px;
 }
 
 .circuit-canvas .pico-node__handle.react-flow__handle {
@@ -1049,10 +1058,10 @@ button:disabled {
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  background: var(--bg-panel-raised);
+  background:#0F4D7C;   /**/
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  width: 190px;
+  border-radius: 2px;
+  width: 220px;
   font-family: var(--font-mono);
   color: var(--text-secondary);
 }
@@ -1074,7 +1083,8 @@ button:disabled {
 }
 .tft-node__pin-label {
   font-size: 9px;
-  color: var(--text-tertiary);
+  color: var(--text-primary);
+  padding: 10px;
 }
 .tft-node__screen {
   position: relative;
